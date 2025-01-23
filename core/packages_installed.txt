@@ -1,0 +1,4 @@
+you will need conda-forge
+
+install scikit-learn (scikit installs many packages including pandas)
+install polars
