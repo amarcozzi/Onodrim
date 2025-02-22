@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation." />
+    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation.">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/DataFrames.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/DataFrames.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/RandomForest.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/RandomForest.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -28,7 +32,7 @@
 }</component>
   <component name="GithubPullRequestsUISettings">{
   &quot;selectedUrlAndAccountId&quot;: {
-    &quot;url&quot;: &quot;https://github.com/jacobarmbrecht/RandomForestPlotImputation.git&quot;,
+    &quot;url&quot;: &quot;https://github.com/ORISE-Fire-Models/RandomForestPlotImputation.git&quot;,
     &quot;accountId&quot;: &quot;e0099548-2f3c-47c1-bdb3-4ce20e163161&quot;
   }
 }</component>
@@ -42,6 +46,8 @@
   </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
+    "Python tests.Doctests in frame.executor": "Debug",
+    "Python.DataFrames.executor": "Run",
     "Python.RandomForest.executor": "Run",
     "Python.dataframes.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -74,8 +80,27 @@
       <option name="project" value="LOCAL" />
       <updated>1738704506863</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation.">
+      <option name="closed" value="true" />
+      <created>1738704665848</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1738704665848</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation." />
