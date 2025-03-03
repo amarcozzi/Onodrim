@@ -7,8 +7,8 @@ cond_fname = "MT_COND.csv"
 tree_fname = "MT_TREE.csv"
 plot_fname = "MT_PLOT.csv"
 
-cond_selected_columns = ["CN", "PLT_CN", "SLOPE", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT"]
-tree_selected_columns = ["CN", "PLT_CN", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
+cond_selected_columns = ["CN", "PLT_CN", "SLOPE", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD", "STDAGE", "FLDSZCD", "STDSZCD", "ALSTKCD", "QMD_RMRS"]
+tree_selected_columns = ["CN", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
 plot_selected_columns = ["CN", "PLOT", "ELEV", "LAT", "LON"]
 
 def create_polars_dataframe():
@@ -29,7 +29,6 @@ def create_polars_dataframe():
 
 
 
-
     # group trees by plot cn and join with our plot group
     # In MT_CSV, ACTUALHT is generally empty or the same as HT
     TREEGRP = pl.sql(
@@ -41,6 +40,7 @@ def create_polars_dataframe():
                     MAX(TREE.HT) AS MAX_HT, 
                     AVG(TREE.HT) AS AVG_HT
             FROM TREE
+            WHERE TREE.STATUSCD = 1
             GROUP BY TREE.PLT_CN
         '''
     ).collect()
@@ -56,7 +56,13 @@ def create_polars_dataframe():
         COND.SLOPE, 
         COND.ASPECT, 
         COND.LIVE_CANOPY_CVR_PCT, 
-        COND.BALIVE
+        COND.BALIVE,
+        COND.FORTYPCD,
+        COND.STDAGE,
+        COND.FLDSZCD,
+        COND.STDSZCD,
+        COND.ALSTKCD,
+        COND.QMD_RMRS
         FROM PLOT NATURAL LEFT JOIN COND
         '''
     ).collect()
@@ -78,11 +84,22 @@ def create_polars_dataframe():
             CONDGRP.SLOPE,
             CONDGRP.ASPECT,
             CONDGRP.LIVE_CANOPY_CVR_PCT,
-            CONDGRP.BALIVE
+            CONDGRP.BALIVE,
+            CONDGRP.FORTYPCD,
+            CONDGRP.STDAGE,
+            CONDGRP.FLDSZCD,
+            CONDGRP.STDSZCD,
+            CONDGRP.ALSTKCD,
+            CONDGRP.QMD_RMRS
             FROM CONDGRP NATURAL LEFT JOIN TREEGRP
             
         '''
     ).collect()
+
+    FINAL = FINAL.with_columns([
+        np.cos(np.radians(FINAL['ASPECT'])).alias("ASPECT_COS"),
+        np.sin(np.radians(FINAL['ASPECT'])).alias("ASPECT_SIN"),
+    ])
 
     print(FINAL)
 
