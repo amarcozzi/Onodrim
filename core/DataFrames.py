@@ -2,21 +2,27 @@ import polars as pl
 import os
 import numpy as np
 
+import database as db
+
+sql_conn_str = "sqlite://"
+mt_db = 'SQLite_FIADB_MT.db'
 data_dir = "./data"
 cond_fname = "MT_COND.csv"
 tree_fname = "MT_TREE.csv"
 plot_fname = "MT_PLOT.csv"
 
-cond_selected_columns = ["CN", "PLT_CN", "SLOPE", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT"]
-tree_selected_columns = ["CN", "PLT_CN", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
+cond_selected_columns = ["CN", "PLT_CN", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD", "STDAGE", "QMD_RMRS"]
+tree_selected_columns = ["CN", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
 plot_selected_columns = ["CN", "PLOT", "ELEV", "LAT", "LON"]
 
 def create_polars_dataframe():
     print("Creating Polars DataFrame")
 
-    cond_df = pl.read_csv(os.path.join(data_dir, cond_fname), columns=cond_selected_columns)
-    #cond_df = cond_df.drop_nulls()
+    #cond_df = pl.read_csv(os.path.join(data_dir, cond_fname), columns=cond_selected_columns)
+    cond_df = db.get_df_from_db("COND", cond_selected_columns)
+    cond_df = cond_df.drop_nulls()
     COND = cond_df.sort("PLT_CN")
+
     tree_df = pl.read_csv(os.path.join(data_dir, tree_fname), columns=tree_selected_columns)
     TREE = tree_df.sort("PLT_CN")
     plot_df = pl.read_csv(os.path.join(data_dir, plot_fname), columns=plot_selected_columns)
@@ -26,7 +32,6 @@ def create_polars_dataframe():
 
     # grab diameters before grouping
     # DIA = TREE.get_column("DIA")
-
 
 
 
@@ -41,6 +46,7 @@ def create_polars_dataframe():
                     MAX(TREE.HT) AS MAX_HT, 
                     AVG(TREE.HT) AS AVG_HT
             FROM TREE
+            WHERE TREE.STATUSCD = 1
             GROUP BY TREE.PLT_CN
         '''
     ).collect()
@@ -56,7 +62,13 @@ def create_polars_dataframe():
         COND.SLOPE, 
         COND.ASPECT, 
         COND.LIVE_CANOPY_CVR_PCT, 
-        COND.BALIVE
+        COND.BALIVE,
+        COND.FORTYPCD,
+        COND.STDAGE,
+        COND.FLDSZCD,
+        COND.STDSZCD,
+        COND.ALSTKCD,
+        COND.QMD_RMRS
         FROM PLOT NATURAL LEFT JOIN COND
         '''
     ).collect()
@@ -78,11 +90,22 @@ def create_polars_dataframe():
             CONDGRP.SLOPE,
             CONDGRP.ASPECT,
             CONDGRP.LIVE_CANOPY_CVR_PCT,
-            CONDGRP.BALIVE
+            CONDGRP.BALIVE,
+            CONDGRP.FORTYPCD,
+            CONDGRP.STDAGE,
+            CONDGRP.FLDSZCD,
+            CONDGRP.STDSZCD,
+            CONDGRP.ALSTKCD,
+            CONDGRP.QMD_RMRS
             FROM CONDGRP NATURAL LEFT JOIN TREEGRP
             
         '''
     ).collect()
+
+    FINAL = FINAL.with_columns([
+        np.cos(np.radians(FINAL['ASPECT'])).alias("ASPECT_COS"),
+        np.sin(np.radians(FINAL['ASPECT'])).alias("ASPECT_SIN"),
+    ])
 
     print(FINAL)
 
