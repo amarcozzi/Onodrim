@@ -6,12 +6,11 @@ import database as db
 
 sql_conn_str = "sqlite://"
 mt_db = 'SQLite_FIADB_MT.db'
-data_dir = "./data"
-cond_fname = "MT_COND.csv"
-tree_fname = "MT_TREE.csv"
-plot_fname = "MT_PLOT.csv"
+data_dir = "data"
 
-cond_selected_columns = ["CN", "PLT_CN", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD", "STDAGE", "QMD_RMRS"]
+
+cond_selected_columns = ["CN", "PLT_CN", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD", "STDAGE", "QMD_RMRS"]
+subp_selected_columns = ["CN", "PLT_CN", "SUBP", "PLOT", "SLOPE", "ASPECT"]
 tree_selected_columns = ["CN", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
 plot_selected_columns = ["CN", "PLOT", "ELEV", "LAT", "LON"]
 
@@ -19,16 +18,17 @@ def create_polars_dataframe():
     print("Creating Polars DataFrame")
 
     #cond_df = pl.read_csv(os.path.join(data_dir, cond_fname), columns=cond_selected_columns)
-    cond_df = db.get_df_from_db("COND", cond_selected_columns)
-    cond_df = cond_df.drop_nulls()
-    COND = cond_df.sort("PLT_CN")
+    COND = db.get_df_from_db("COND", cond_selected_columns)
+    COND = COND.sort("PLT_CN")
 
-    tree_df = pl.read_csv(os.path.join(data_dir, tree_fname), columns=tree_selected_columns)
-    TREE = tree_df.sort("PLT_CN")
-    plot_df = pl.read_csv(os.path.join(data_dir, plot_fname), columns=plot_selected_columns)
+    #tree_df = pl.read_csv(os.path.join(data_dir, tree_fname), columns=tree_selected_columns)
+    TREE = db.get_df_from_db("TREE", tree_selected_columns)
+    TREE = TREE.sort("PLT_CN")
+    #plot_df = pl.read_csv(os.path.join(data_dir, plot_fname), columns=plot_selected_columns)
     #plot_df = plot_df.drop_nulls()
-    plot_df = plot_df.rename({"CN": "PLT_CN"})
-    PLOT = plot_df.sort("PLT_CN")
+    PLOT = db.get_df_from_db("PLOT", plot_selected_columns)
+    PLOT = PLOT.rename({"CN": "PLT_CN"})
+    PLOT = PLOT.sort("PLT_CN")
 
     # grab diameters before grouping
     # DIA = TREE.get_column("DIA")
@@ -37,6 +37,7 @@ def create_polars_dataframe():
 
     # group trees by plot cn and join with our plot group
     # In MT_CSV, ACTUALHT is generally empty or the same as HT
+    # This SQL query is done this way for readability and future potential adjustments
     TREEGRP = pl.sql(
         query='''
             SELECT TREE.PLT_CN, 
@@ -51,56 +52,12 @@ def create_polars_dataframe():
         '''
     ).collect()
 
-
-    CONDGRP = pl.sql(
-        query='''
-        SELECT 
-        PLOT.PLT_CN,
-        PLOT.ELEV, 
-        PLOT.LAT, 
-        PLOT.LON, 
-        COND.SLOPE, 
-        COND.ASPECT, 
-        COND.LIVE_CANOPY_CVR_PCT, 
-        COND.BALIVE,
-        COND.FORTYPCD,
-        COND.STDAGE,
-        COND.FLDSZCD,
-        COND.STDSZCD,
-        COND.ALSTKCD,
-        COND.QMD_RMRS
-        FROM PLOT NATURAL LEFT JOIN COND
-        '''
-    ).collect()
+    #join out PLOT and COND tables together
+    CONDGRP = PLOT.join(COND,on="PLT_CN", how="left")
     print(CONDGRP)
 
-    #select CONDGRP PLT_CN for 40,000
-    #select TREEGRP PLT_CN for 12,000
-    FINAL = pl.sql(
-        query='''
-        SELECT DISTINCT
-            TREEGRP.PLT_CN,
-            TREEGRP.TREE_COUNT,
-            TREEGRP.TPA_UNADJ,
-            TREEGRP.MAX_HT,
-            TREEGRP.AVG_HT,
-            CONDGRP.ELEV,
-            CONDGRP.LAT,
-            CONDGRP.LON,
-            CONDGRP.SLOPE,
-            CONDGRP.ASPECT,
-            CONDGRP.LIVE_CANOPY_CVR_PCT,
-            CONDGRP.BALIVE,
-            CONDGRP.FORTYPCD,
-            CONDGRP.STDAGE,
-            CONDGRP.FLDSZCD,
-            CONDGRP.STDSZCD,
-            CONDGRP.ALSTKCD,
-            CONDGRP.QMD_RMRS
-            FROM CONDGRP NATURAL LEFT JOIN TREEGRP
-            
-        '''
-    ).collect()
+    #join our CONDGRP with our TREEGRP tables for final data frame
+    FINAL = CONDGRP.join(TREEGRP, on="PLT_CN", how="left")
 
     FINAL = FINAL.with_columns([
         np.cos(np.radians(FINAL['ASPECT'])).alias("ASPECT_COS"),
@@ -109,80 +66,14 @@ def create_polars_dataframe():
 
     print(FINAL)
 
+    #drop duplicates and nulls
     FINAL = FINAL.unique(subset=["PLT_CN"])
     FINAL = FINAL.drop_nulls()
 
     print("Final DataFrame: ")
     print(FINAL)
-    FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",")
+    FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",") #write as csv for checks and records
     return FINAL
-
-def create_avg_polars_dataframe():
-    print("Creating Polars DataFrame with Average Values")
-    cond_df = pl.read_csv(os.path.join(data_dir, cond_fname), columns=cond_selected_columns)
-    # cond_df = cond_df.drop_nulls()
-    COND = cond_df.sort("PLT_CN")
-    tree_df = pl.read_csv(os.path.join(data_dir, tree_fname), columns=tree_selected_columns)
-    TREE = tree_df.sort("PLT_CN")
-    plot_df = pl.read_csv(os.path.join(data_dir, plot_fname), columns=plot_selected_columns)
-    PLOT = plot_df.sort("CN")
-
-    # grab diameters before grouping
-    # DIA = TREE.get_column("DIA")
-
-    PLOTGRP = pl.sql(
-        query='''
-        SELECT PLOT.ELEV, 
-            PLOT.LAT, 
-            PLOT.LON, 
-            COALESCE(PLOT.CN, TREE.PLT_CN) AS PLT_CN,
-        FROM PLOT NATURAL LEFT JOIN TREE
-
-        '''
-    ).collect()
-    #print(PLOTGRP)
-
-    CONDGRP = pl.sql(
-        query='''
-        SELECT COND.BALIVE,
-            COND.SLOPE, 
-            COND.ASPECT, 
-            PLOT.ELEV, 
-            PLOT.LAT, 
-            PLOT.LON, 
-            COND.LIVE_CANOPY_CVR_PCT, 
-            COALESCE(COND.PLT_CN, PLOTGRP.PLT_CN) AS PLT_CN,
-        FROM COND NATURAL LEFT JOIN PLOTGRP
-        '''
-    ).collect()
-    #print(CONDGRP)
-
-    # group trees by plot cn and join with our plot group
-    # In MT_CSV, ACTUALHT is generally empty or the same as HT
-    TREEGRP = pl.sql(
-        query='''
-            SELECT TREE.PLT_CN, 
-                    COUNT(TREE.CN) AS TREE_COUNT, 
-                    AVG(COND.LIVE_CANOPY_CVR_PCT),
-                    AVG(COND.BALIVE),
-                    SUM(TREE.TPA_UNADJ), 
-                    MAX(TREE.HT) AS MAX_HT, 
-                    AVG(TREE.HT) AS AVG_HT, 
-                    AVG(PLOT.ELEV),
-                    AVG(COND.SLOPE),
-                    AVG(COND.ASPECT), 
-                    AVG(PLOT.LAT), 
-                    AVG(PLOT.LON), 
-                    COALESCE(PLOT.CN, TREE.PLT_CN) AS PLT_CN
-            FROM TREE NATURAL LEFT JOIN CONDGRP
-            GROUP BY TREE.PLT_CN
-        '''
-    ).collect()
-
-
-    print("Final DataFrame: ")
-    print(TREEGRP)
-    return TREEGRP
 
 
 def main():
