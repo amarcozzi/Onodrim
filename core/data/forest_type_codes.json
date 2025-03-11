@@ -1,0 +1,230 @@
+{
+  "000": {
+    "000": "Non forest"
+  },
+  "100": {
+    "101": "Jack pine",
+    "102": "Red pine",
+    "103": "Eastern white pine",
+    "104": "Eastern white pine / eastern hemlock",
+    "105": "Eastern hemlock"
+  },
+  "120": {
+    "121": "Balsam fir",
+    "122": "White spruce",
+    "123": "Red spruce",
+    "124": "Red spruce / balsam fir",
+    "125": "Black spruce",
+    "126": "Tamarack",
+    "127": "Northern white-cedar",
+    "128": "Fraser fir",
+    "129": "Red spruce / Fraser fir"
+  },
+  "140": {
+    "141": "Longleaf pine",
+    "142": "Slash pine"
+  },
+  "150": {
+    "151": "Tropical pines"
+  },
+  "160": {
+    "161": "Loblolly pine",
+    "162": "Shortleaf pine",
+    "163": "Virginia pine",
+    "164": "Sand pine",
+    "165": "Table mountain pine",
+    "166": "Pond pine",
+    "167": "Pitch pine",
+    "168": "Spruce pine"
+  },
+  "170": {
+    "171": "Eastern redcedar",
+    "172": "Florida softwoods"
+  },
+  "180": {
+    "182": "Rocky Mountain juniper",
+    "184": "Juniper woodland",
+    "185": "Pinyon / juniper woodland"
+  },
+  "200": {
+    "201": "Douglas-fir",
+    "202": "Port-Orford-cedar",
+    "203": "Bigcone Douglas-fir"
+  },
+  "220": {
+    "221": "Ponderosa pine",
+    "222": "Incense-cedar",
+    "224": "Sugar pine",
+    "225": "Jeffrey pine",
+    "226": "Coulter pine"
+  },
+  "240": {
+    "241": "Western white pine"
+  },
+  "260": {
+    "261": "White fir",
+    "262": "Red fir",
+    "263": "Noble fir",
+    "264": "Pacific silver fir",
+    "265": "Engelmann spruce",
+    "266": "Engelmann spruce / subalpine fir",
+    "267": "Grand fir",
+    "268": "Subalpine fir",
+    "269": "Blue spruce",
+    "270": "Mountain hemlock",
+    "271": "Alaska-yellow-cedar"
+  },
+  "280": {
+    "281": "Lodgepole pine"
+  },
+  "300": {
+    "301": "Western hemlock",
+    "304": "Western redcedar",
+    "305": "Sitka spruce"
+  },
+  "320": {
+    "321": "Western larch"
+  },
+  "340": {
+    "341": "Redwood",
+    "342": "Giant sequoia"
+  },
+  "360": {
+    "361": "Knobcone pine",
+    "362": "Southwestern white pine",
+    "363": "Bishop pine",
+    "364": "Monterey pine",
+    "365": "Foxtail pine / bristlecone pine",
+    "366": "Limber pine",
+    "367": "Whitebark pine",
+    "368": "Miscellaneous western softwoods",
+    "369": "Western juniper"
+  },
+  "370": {
+    "371": "California mixed conifer"
+  },
+  "380": {
+    "381": "Scotch pine",
+    "383": "Other exotic softwoods",
+    "384": "Norway spruce",
+    "385": "Introduced larch"
+  },
+  "390": {
+    "391": "Other softwoods"
+  },
+  "400": {
+    "401": "Eastern white pine / northern red oak / white ash",
+    "402": "Eastern redcedar / hardwood",
+    "403": "Longleaf pine / oak",
+    "404": "Shortleaf pine / oak",
+    "405": "Virginia pine / southern red oak",
+    "406": "Loblolly pine / hardwoord",
+    "407": "Slash pine / hardwood",
+    "409": "Other pine / hardwood"
+  },
+  "500": {
+    "501": "Post oak / blackjack oak",
+    "502": "Chestnut oak",
+    "503": "White oak / red oak / hickory",
+    "504": "White oak",
+    "505": "Northern red oak",
+    "506": "Yellow-poplar / white oak / northern red oak",
+    "507": "Sassafras / persimmon",
+    "508": "Sweetgum / yellow-poplar",
+    "509": "Bur oak",
+    "510": "Scarlet oak",
+    "511": "Yellow-poplar",
+    "512": "Black walnut",
+    "513": "Black locust",
+    "514": "Southern scrub oak",
+    "515": "Chestnut oak / black oak / scarlet oak",
+    "516": "Cherry / white ash / yellow-poplar",
+    "517": "Elm / ash / black locust",
+    "519": "Red maple / oak",
+    "520": "Mixed upland hardwoods"
+  },
+  "600": {
+    "601": "Swamp chestnut oak / cherrybark oak",
+    "602": "Sweetgum / Nuttall oak / willow oak",
+    "605": "Overcup oak / water hickory",
+    "606": "Atlantic white-cedar",
+    "607": "Baldcypress / water tupelo",
+    "608": "Sweetbay / swamp tupelo / red maple",
+    "609": "Baldcypress / pondcypress"
+  },
+  "700": {
+    "701": "Black ash / American elm / red maple",
+    "702": "River birch / sycamore",
+    "703": "Cottonwood",
+    "704": "Willow",
+    "705": "Sycamore / pecan / American elm",
+    "706": "Sugarberry / hackberry / elm / green ash",
+    "707": "Silver maple / American elm",
+    "708": "Red maple / lowland",
+    "709": "Cottonwood / willow",
+    "722": "Oregon ash"
+  },
+  "800": {
+    "801": "Sugar maple / beech / yellow birch",
+    "802": "Black cherry",
+    "805": "Hard maple / basswood",
+    "809": "Red maple / upland"
+  },
+  "900": {
+    "901": "Aspen",
+    "902": "Paper birch",
+    "903": "Gray birch",
+    "904": "Balsam poplar",
+    "905": "Pin cherry"
+  },
+  "910": {
+    "911": "Red alder",
+    "912": "Bigleaf maple"
+  },
+  "920": {
+    "921": "Gray pine",
+    "922": "California black oak",
+    "923": "Oregon white oak",
+    "924": "Blue oak",
+    "931": "Coast live oak",
+    "933": "Canyon live oak",
+    "934": "Interior live oak",
+    "935": "California white oak (valley oak)"
+  },
+  "940": {
+    "941": "Tanoak",
+    "942": "California laurel",
+    "943": "Giant chinkapin"
+  },
+  "960": {
+    "961": "Pacific madrone",
+    "962": "Other hardwoods"
+  },
+  "970": {
+    "971": "Deciduous oak woodland",
+    "972": "Evergreen oak woodland",
+    "973": "Mesquite woodland",
+    "974": "Cercocarpus (mountain brush) woodland",
+    "975": "Intermountain maple woodland",
+    "976": "Miscellaneous woodland hardwoods"
+  },
+  "980": {
+    "982": "Mangrove",
+    "983": "Palms",
+    "984": "Dry forest",
+    "985": "Moist forest",
+    "986": "Wet and rain forest",
+    "987": "Lower montane wet rain forest",
+    "988": "Cloud forest",
+    "989": "Other tropical hardwoods"
+  },
+  "990": {
+    "991": "Paulownia",
+    "992": "Melaleuca",
+    "993": "Eucalyptus",
+    "995": "Other exotic hardwoods"
+  },
+  "999": {
+    "999": "Nonstocked"
+  }
+}

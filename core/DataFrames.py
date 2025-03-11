@@ -1,38 +1,38 @@
 import polars as pl
 import os
+import json
 import numpy as np
 
 import database as db
 
 sql_conn_str = "sqlite://"
 mt_db = 'SQLite_FIADB_MT.db'
+fortyp_json = "forest_type_codes.json"
 data_dir = "data"
 
 
 cond_selected_columns = ["CN", "PLT_CN", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD", "STDAGE", "QMD_RMRS"]
-subp_selected_columns = ["CN", "PLT_CN", "SUBP", "PLOT", "SLOPE", "ASPECT"]
+subp_selected_columns = ["CN", "PLT_CN", "SLOPE", "ASPECT"]
 tree_selected_columns = ["CN", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
-plot_selected_columns = ["CN", "PLOT", "ELEV", "LAT", "LON"]
+plot_selected_columns = ["CN", "PLOT", "ELEV", "LAT"]
 
 def create_polars_dataframe():
     print("Creating Polars DataFrame")
 
-    #cond_df = pl.read_csv(os.path.join(data_dir, cond_fname), columns=cond_selected_columns)
+    #retrieve our data from the SQL database
     COND = db.get_df_from_db("COND", cond_selected_columns)
     COND = COND.sort("PLT_CN")
 
-    #tree_df = pl.read_csv(os.path.join(data_dir, tree_fname), columns=tree_selected_columns)
     TREE = db.get_df_from_db("TREE", tree_selected_columns)
     TREE = TREE.sort("PLT_CN")
-    #plot_df = pl.read_csv(os.path.join(data_dir, plot_fname), columns=plot_selected_columns)
-    #plot_df = plot_df.drop_nulls()
+
     PLOT = db.get_df_from_db("PLOT", plot_selected_columns)
     PLOT = PLOT.rename({"CN": "PLT_CN"})
     PLOT = PLOT.sort("PLT_CN")
 
-    # grab diameters before grouping
-    # DIA = TREE.get_column("DIA")
-
+    SUBP = db.get_df_from_db("SUBPLOT", subp_selected_columns)
+    SUBP = SUBP.drop_nulls()
+    print(SUBP)
 
 
     # group trees by plot cn and join with our plot group
@@ -75,9 +75,20 @@ def create_polars_dataframe():
     FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",") #write as csv for checks and records
     return FINAL
 
+def filter_by_forest_type(dataframe: pl.DataFrame, fortypcd: int):
+    print("Filtering our data by forest type code")
+    with open(os.path.join(data_dir, fortyp_json)) as json_file:
+        typcds = json.load(json_file)
+
+    if fortypcd in typcds.values():
+        return dataframe.filter(pl.col("FORTYPCD") == fortypcd)
+    else:
+        print("Given forest type code does not exist")
+        return
+
 
 def main():
-    print("main function")
+    print("DataGrames.py main function")
     create_polars_dataframe()
 
 
