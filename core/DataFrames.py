@@ -11,8 +11,8 @@ fortyp_json = "forest_type_codes.json"
 data_dir = "data"
 
 
-cond_selected_columns = ["PLT_CN", "ASPECT", "BALIVE", "LIVE_CANOPY_CVR_PCT", "FORTYPCD",]
-subp_selected_columns = ["SUBP", "PLT_CN", "SLOPE", "ASPECT"]
+cond_selected_columns = ["PLT_CN", "ASPECT", "SLOPE", "FORTYPCD"]
+subp_selected_columns = ["PLT_CN","SUBP"]
 tree_selected_columns = ["CN","SUBP", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
 plot_selected_columns = ["CN", "PLOT", "DESIGNCD", "ELEV", "LAT", "PLOT_STATUS_CD"]
 
@@ -31,22 +31,21 @@ def create_polars_dataframe():
     PLOT = PLOT.sort("PLT_CN")
 
     SUBP = db.get_df_from_db("SUBPLOT", subp_selected_columns)
+    SUBP = SUBP.join(COND, on="PLT_CN")
     SUBP = SUBP.drop_nulls()
-    SUBP = SUBP.sort("PLT_CN")
-    #print(SUBP)
+    SUBP = SUBP.with_columns(
+                                pl.concat_str(
+                                [
+                                        pl.col("PLT_CN"),
+                                        pl.col("SUBP")
+                                        ],
+                                        separator= "_",
+                                    ).alias("SUBPLOT_ID"),
+                                )
+    SUBP = SUBP.sort("SUBPLOT_ID")
+    print(SUBP)
 
-    SUBPGRP= SUBP.join(TREE, on="PLT_CN", how="left")
-    TEST = pl.sql(
-        query='''
-            SELECT PLOT.PLOT_STATUS_CD,
-                    COUNT(PLOT.PLT_CN) AS COUNT
-            FROM PLOT
-            GROUP BY PLOT_STATUS_CD
-        '''
-    ).collect()
 
-    print(TEST)
-    #print(SUBPGRP)
     # group trees by plot cn AND by subplot
     # In MT_CSV, ACTUALHT is generally empty or the same as HT
     # This SQL query is done this way for readability and future potential adjustments
@@ -65,20 +64,38 @@ def create_polars_dataframe():
         '''
     ).collect()
 
+    TREEGRP = TREEGRP.drop_nulls()
+    TREEGRP = TREEGRP.with_columns(
+                                pl.concat_str(
+                                [
+                                        pl.col("PLT_CN"),
+                                        pl.col("SUBP")
+                                        ],
+                                        separator= "_",
+                                    ).alias("SUBPLOT_ID"),
+                                )
+    TREEGRP = TREEGRP.drop_nulls()
+    TREEGRP = TREEGRP.unique("SUBPLOT_ID")
+    TREEGRP = TREEGRP.sort("SUBPLOT_ID")
     print(TREEGRP)
 
-    #join out PLOT and COND tables together
-    CONDGRP = PLOT.join(COND,on="PLT_CN", how="left")
+    #join out PLOT, SUBP, and COND tables together
+    CONDGRP = PLOT.join(SUBP,on="PLT_CN", how="right")
     CONDGRP = CONDGRP.drop_nulls()
+    CONDGRP = CONDGRP.unique("SUBPLOT_ID")
+    CONDGRP = CONDGRP.sort("SUBPLOT_ID")
     print(f"CONDGRP with dropped nulls {CONDGRP}")
 
 
     #join our CONDGRP with our TREEGRP tables for final data frame
-    FINAL = TREEGRP.join(CONDGRP, on="PLT_CN", how="inner")
+    FINAL = TREEGRP.join(CONDGRP, on="SUBPLOT_ID")
     FINAL = FINAL.with_columns([
         np.cos(np.radians(FINAL['ASPECT'])).alias("ASPECT_COS"),
         np.sin(np.radians(FINAL['ASPECT'])).alias("ASPECT_SIN"),
     ])
+    FINAL = FINAL.sort("SUBPLOT_ID")
+
+
 
     print(f"Final DataFrame {FINAL} ")
     FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",") #write as csv for checks and records
@@ -108,6 +125,8 @@ def is_forest_type(fortypcd: int):
 
     print(f"Given forest type code {fortypcd} does not exist")
     return False
+
+
 
 def main():
     print("DataGrames.py main function")
