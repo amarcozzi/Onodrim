@@ -96,6 +96,7 @@ def train_autoencoder(plot_data, feature_weights=None, embedding_dim=32, batch_s
         'LIVE_CANOPY_CVR_PCT',
         'TPA_UNADJ',
         'MAX_HT',
+        'BASAL_AREA_SUBP',
         'BALIVE',
         'ELEV',
         'SLOPE',
@@ -104,8 +105,10 @@ def train_autoencoder(plot_data, feature_weights=None, embedding_dim=32, batch_s
         'FORTYPCD'
     ]
 
+
+
     X = plot_data.select(feature_cols).to_numpy()
-    plot_ids = plot_data.select(['PLT_CN']).to_numpy().flatten()
+    plot_ids = plot_data.select(pl.col('SUBPLOTID')).to_numpy().flatten()
 
     # Check for NaN values and handle them
     if np.isnan(X).any():
@@ -249,7 +252,7 @@ def find_most_similar_plots(model, scaler, X_test, y_test, plot_data, feature_co
     X_all_scaled = scaler.transform(X_all)
 
     # Use plot_ids array that aligns with X_all
-    plot_ids_all = plot_data.select(['PLT_CN']).to_numpy().flatten()
+    plot_ids_all = plot_data.select(['SUBPLOTID']).to_numpy().flatten()
 
     X_all_tensor = torch.tensor(X_all_scaled, dtype=torch.float32)
 
@@ -362,7 +365,7 @@ def evaluate_predictions(results, plot_data, feature_cols):
     Fixed to calculate realistic RMSE values by using column indices
     """
     # Important metrics to compare
-    key_metrics = ['BALIVE', 'MAX_HT', 'TPA_UNADJ']
+    key_metrics = ['BASAL_AREA_SUBP','BALIVE', 'MAX_HT', 'TPA_UNADJ']
     plot_data_dict = {}
 
     # Get column indices for faster lookup
@@ -371,7 +374,7 @@ def evaluate_predictions(results, plot_data, feature_cols):
     # Convert plot_data to dictionary for faster lookup
     for i in range(len(plot_data)):
         row = plot_data.row(i)
-        plot_id = row[col_indices['PLT_CN']]  # Use numeric index instead of string
+        plot_id = row[col_indices['SUBPLOTID']]  # Use numeric index instead of string
 
         if plot_id not in plot_data_dict:
             plot_data_dict[plot_id] = {}
@@ -444,13 +447,13 @@ def display_similarity_results(results, plot_data, feature_cols, num_examples=5)
     col_indices = {col: plot_data.columns.index(col) for col in plot_data.columns}
 
     # Important metrics to focus on
-    key_metrics = ['BALIVE', 'MAX_HT', 'TPA_UNADJ', 'LIVE_CANOPY_CVR_PCT', 'FORTYPCD']
+    key_metrics = ['BASAL_AREA_SUBP','BALIVE', 'MAX_HT', 'TPA_UNADJ', 'LIVE_CANOPY_CVR_PCT', 'FORTYPCD']
 
     # Build a quick lookup dictionary for plot data
     plot_data_dict = {}
     for i in range(len(plot_data)):
         row = plot_data.row(i)
-        plot_id = row[col_indices['PLT_CN']]
+        plot_id = row[col_indices['SUBPLOTID']]
 
         if plot_id not in plot_data_dict:
             plot_data_dict[plot_id] = {}
@@ -590,11 +593,12 @@ def display_similarity_results(results, plot_data, feature_cols, num_examples=5)
 
 def main():
     # Load data
-    from DataFrames import create_polars_dataframe  # Import your data loading function
-    plot_data = create_polars_dataframe()
+    from DataFrames import create_polars_dataframe_by_subplot, create_polars_dataframe_by_plot  # Import your data loading function
+    plot_data = create_polars_dataframe_by_subplot()
 
     # Define custom feature weights (optional)
     feature_weights = {
+        'BASAL_AREA_SUBP': 4.0,
         'BALIVE': 4.0,  # Most important
         'TPA_UNADJ': 3.0,  # Very important
         'MAX_HT': 3.0,  # Very important

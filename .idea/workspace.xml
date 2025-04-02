@@ -4,9 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present.">
+    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Created unique SUBPLOT_ID key for dataframes for joining and sorting.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/DataFrames.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/DataFrames.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/autoencoder.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/autoencoder_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/autoencoder_attention.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_attention.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/database.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,6 +59,8 @@
     "Python.DataFrames.executor": "Run",
     "Python.RandomForest.executor": "Run",
     "Python.autoencoder.executor": "Run",
+    "Python.autoencoder_2.executor": "Debug",
+    "Python.autoencoder_attention.executor": "Run",
     "Python.dataframes.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -133,7 +139,15 @@
       <option name="project" value="LOCAL" />
       <updated>1742748546309</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="Created unique SUBPLOT_ID key for dataframes for joining and sorting.">
+      <option name="closed" value="true" />
+      <created>1742923087586</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1742923087586</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -153,6 +167,48 @@
     <MESSAGE value="Added functionality to get FIA data from SQL Lite database instead of csv files. Cleaned up and organized our DataFrame creation process to ensure easy modifications. Added initial subplot column ideas." />
     <MESSAGE value="Created a json for forest type codes. Added functions to filter our data by forest type codes." />
     <MESSAGE value="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present." />
-    <option name="LAST_COMMIT_MESSAGE" value="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present." />
+    <MESSAGE value="Created unique SUBPLOT_ID key for dataframes for joining and sorting." />
+    <option name="LAST_COMMIT_MESSAGE" value="Created unique SUBPLOT_ID key for dataframes for joining and sorting." />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder_2.py</url>
+          <line>1126</line>
+          <option name="timeStamp" value="2" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder_2.py</url>
+          <line>1089</line>
+          <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder_attention.py</url>
+          <line>211</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>122</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>15</line>
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>109</line>
+          <option name="timeStamp" value="8" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/DataFrames.py</url>
+          <line>34</line>
+          <option name="timeStamp" value="9" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>
