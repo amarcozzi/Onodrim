@@ -1132,8 +1132,8 @@ def main():
     plots_dir, data_dir = create_output_directories()
 
     # Load data
-    from DataFrames import create_polars_dataframe
-    plot_data = create_polars_dataframe()
+    from DataFrames import create_polars_dataframe_by_plot
+    plot_data = create_polars_dataframe_by_plot()
 
     feature_cols = [
         'LIVE_CANOPY_CVR_PCT',

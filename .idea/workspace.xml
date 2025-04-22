@@ -4,13 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Created unique SUBPLOT_ID key for dataframes for joining and sorting.">
+    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Modified autoencoder.py to look at subplot level instead of plot.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/DataFrames.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/DataFrames.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/autoencoder.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/autoencoder_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_2.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/autoencoder_attention.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_attention.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/core/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/database.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -147,7 +145,15 @@
       <option name="project" value="LOCAL" />
       <updated>1742923087586</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="Modified autoencoder.py to look at subplot level instead of plot.">
+      <option name="closed" value="true" />
+      <created>1743622941743</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1743622941743</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -168,7 +174,8 @@
     <MESSAGE value="Created a json for forest type codes. Added functions to filter our data by forest type codes." />
     <MESSAGE value="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present." />
     <MESSAGE value="Created unique SUBPLOT_ID key for dataframes for joining and sorting." />
-    <option name="LAST_COMMIT_MESSAGE" value="Created unique SUBPLOT_ID key for dataframes for joining and sorting." />
+    <MESSAGE value="Modified autoencoder.py to look at subplot level instead of plot." />
+    <option name="LAST_COMMIT_MESSAGE" value="Modified autoencoder.py to look at subplot level instead of plot." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -202,11 +209,6 @@
           <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
           <line>109</line>
           <option name="timeStamp" value="8" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/core/DataFrames.py</url>
-          <line>34</line>
-          <option name="timeStamp" value="9" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
