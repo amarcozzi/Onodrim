@@ -122,6 +122,7 @@ def create_polars_dataframe_by_subplot():
         np.cos(np.radians(FINAL['ASPECT'])).alias("ASPECT_COS"),
         np.sin(np.radians(FINAL['ASPECT'])).alias("ASPECT_SIN")
     ])
+    FINAL = FINAL.drop_nulls()
     FINAL = FINAL.sort("SUBPLOT_ID")
 
 
@@ -129,7 +130,7 @@ def create_polars_dataframe_by_subplot():
     print(f"Final DataFrame {FINAL} ")
     FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",") #write as csv for checks and records
 
-    #print(FINAL.select(["SUBPLOT_ID", "BALIVE", "TPA_UNADJ", "BASAL_AREA_SUBP","QMD", "TREE_COUNT","BASAL_ACRE"]))
+    print(FINAL.select(["SUBPLOT_ID","QMD_TREE", "TREE_COUNT","BASAL_AREA_TREE"]))
 
     #test our filtering by giving it a real code and a fake code
     pondo = filter_by_forest_type(FINAL, 221)
