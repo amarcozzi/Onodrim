@@ -1,5 +1,4 @@
 import sys
-
 import polars as pl
 import os
 import json
@@ -18,6 +17,41 @@ cond_selected_columns = ["PLT_CN", "ASPECT", "SLOPE", "FORTYPCD"]
 subp_selected_columns = ["PLT_CN", "SUBP"]
 tree_selected_columns = ["CN","SUBP", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
 plot_selected_columns = ["CN", "DESIGNCD", "ELEV", "LAT", "LON", "PLOT_STATUS_CD"]
+
+#FINAL FEATURE COLUMNS
+feature_cols = [
+        "TREE_COUNT",
+        'MAX_HT',
+        'AVG_HT',
+        'BASAL_AREA_TREE',
+        'ELEV',
+        'SLOPE',
+        'ASPECT_COS',
+        'ASPECT_SIN',
+        "LAT",
+        'FORTYPCD',
+        "QMD_TREE",
+        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
+        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
+        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
+        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
+        "MAX_TEMP_WARM_MONTH",  # BIO5
+        "MIN_TEMP_COLD_MONTH",  # BIO6
+        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
+        "MEAN_TEMP_WET_QUARTER",  # BIO8
+        "MEAN_TEMP_DRY_QUARTER",  # BIO9
+        "MEAN_TEMP_WARM_QUARTER",  # BIO10
+        "MEAN_TEMP_COLD_QUARTER",  # BIO11
+        "ANNUAL_PRECIP",  # BIO12
+        "PRECIP_WET_MONTH",  # BIO13
+        "PRECIP_DRY_MONTH",  # BIO14
+        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
+        "PRECIP_WET_QUARTER",  # BIO16
+        "PRECIP_DRY_QUARTER",  # BIO17
+        "PRECIP_WARM_QUARTER",  # BIO18
+        "PRECIP_COLD_QUARTER"  # BIO19
+    ]
+
 
 #Bioclimatic data file paths
 bioclim_fnames = [
@@ -148,13 +182,9 @@ def create_polars_dataframe_by_subplot():
     TREEGRP = TREEGRP.drop_nulls()
     TREEGRP = TREEGRP.unique("SUBPLOT_ID")
     TREEGRP = TREEGRP.sort("SUBPLOT_ID")
-
-    # 1 acre = 43560 ft^2
-    # subplot radius = 24 ft, subplot area = ~1809.56 ft^2
     TREEGRP = TREEGRP.with_columns([
         np.sqrt(pl.col("DIA_SQR_TREE") / (pl.col("TREE_COUNT"))).alias("QMD_TREE")
     ])
-
     print(TREEGRP)
 
     #join out PLOT, SUBP, and COND tables together
@@ -188,7 +218,7 @@ def create_polars_dataframe_by_subplot():
     #test our filtering by giving it a real code and a fake code
     #pondo = filter_by_forest_type(FINAL, 221)
     #error = filter_by_forest_type(FINAL, 219)
-    return FINAL
+    return FINAL.select(feature_cols)
 
 
 def climate_variables_to_csv(plots):
@@ -205,6 +235,7 @@ def climate_variables_to_csv(plots):
         csv_writer.writeheader()
         total_rows = plots.height
         cur_row = 0
+        #gather climate data from plot coordinates
         for plot in plots.iter_rows(named=True):
             lat, lon = plot["LAT"], plot["LON"]
             xx, yy = transformer.transform(lon,lat)
@@ -213,7 +244,7 @@ def climate_variables_to_csv(plots):
                 #get our data value
                 value = data.sel(x=xx, y=yy, method='nearest').values
                 features[data.name] = value[0]
-
+            #record our climate data to our csv row by row
             csv_writer.writerow(features)
             cur_row = cur_row + 1
             sys.stdout.write(f"\t\r{(cur_row/total_rows)*100} % complete")
