@@ -1,20 +1,69 @@
+import sys
+
 import polars as pl
 import os
 import json
+import csv
 import numpy as np
-from polars.polars import coalesce
-
 import database as db
+import rioxarray
+from pyproj import Transformer
 
 sql_conn_str = "sqlite://"
 fortyp_json = "forest_type_codes.json"
 data_dir = "data"
 
-
+#FIADB desired columns
 cond_selected_columns = ["PLT_CN", "ASPECT", "SLOPE", "FORTYPCD"]
 subp_selected_columns = ["PLT_CN", "SUBP"]
 tree_selected_columns = ["CN","SUBP", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
-plot_selected_columns = ["CN", "DESIGNCD", "ELEV", "LAT", "PLOT_STATUS_CD"]
+plot_selected_columns = ["CN", "DESIGNCD", "ELEV", "LAT", "LON", "PLOT_STATUS_CD"]
+
+#Bioclimatic data file paths
+bioclim_fnames = [
+    "wc2.1_10m_bio_1.tif",
+    "wc2.1_10m_bio_2.tif",
+    "wc2.1_10m_bio_3.tif",
+    "wc2.1_10m_bio_4.tif",
+    "wc2.1_10m_bio_5.tif",
+    "wc2.1_10m_bio_6.tif",
+    "wc2.1_10m_bio_7.tif",
+    "wc2.1_10m_bio_8.tif",
+    "wc2.1_10m_bio_9.tif",
+    "wc2.1_10m_bio_10.tif",
+    "wc2.1_10m_bio_11.tif",
+    "wc2.1_10m_bio_12.tif",
+    "wc2.1_10m_bio_13.tif",
+    "wc2.1_10m_bio_14.tif",
+    "wc2.1_10m_bio_15.tif",
+    "wc2.1_10m_bio_16.tif",
+    "wc2.1_10m_bio_17.tif",
+    "wc2.1_10m_bio_18.tif",
+    "wc2.1_10m_bio_19.tif"
+]
+#LIST OF OUR NAMES FOR RENAMING WHEN READING CSV
+bio_names = ["SUBPLOT_ID",              #CSV HAS SUBPLOT_ID
+             "MEAN_TEMP",               #BIO1   ANNUAL MEAN TEMP
+             "MEAN_DIURNAL_RANGE",      #BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
+             "ISOTHERMALITY",           #BIO3   (BIO2/BIO7)*100
+             "TEMP_SEASONALITY",        #BIO4   (STD DEV * 100)
+             "MAX_TEMP_WARM_MONTH",     #BIO5
+             "MIN_TEMP_COLD_MONTH",     #BIO6
+             "TEMP_RANGE",              #BIO7   (BIO5 - BIO6)
+             "MEAN_TEMP_WET_QUARTER",   #BIO8
+             "MEAN_TEMP_DRY_QUARTER",   #BIO9
+             "MEAN_TEMP_WARM_QUARTER",  #BIO10
+             "MEAN_TEMP_COLD_QUARTER",  #BIO11
+             "ANNUAL_PRECIP",           #BIO12
+             "PRECIP_WET_MONTH",        #BIO13
+             "PRECIP_DRY_MONTH",        #BIO14
+             "PRECIP_SEASONALITY",      #BIO15  (COEFFICIENT of VARIATION)
+             "PRECIP_WET_QUARTER",      #BIO16
+             "PRECIP_DRY_QUARTER",      #BIO17
+             "PRECIP_WARM_QUARTER",     #BIO18
+             "PRECIP_COLD_QUARTER"      #BIO19
+             ]
+clim_dir = os.path.join(data_dir, "climatic")
 
 def create_polars_dataframe_by_subplot():
     print("Creating Polars DataFrame")
@@ -30,9 +79,11 @@ def create_polars_dataframe_by_subplot():
     PLOT = PLOT.rename({"CN": "PLT_CN"})
     PLOT = PLOT.sort("PLT_CN")
 
+
     SUBP = db.get_df_from_db("MT", "SUBPLOT", subp_selected_columns)
     SUBP = SUBP.join(COND, on="PLT_CN", how="right", coalesce=True)
     SUBP = SUBP.drop_nulls()
+    #create our subplot id for readability
     SUBP = SUBP.with_columns(
                                 pl.concat_str(
                                 [
@@ -42,15 +93,13 @@ def create_polars_dataframe_by_subplot():
                                         separator= "_",
                                     ).alias("SUBPLOT_ID"),
                                 )
-
-
     SUBP = SUBP.sort("SUBPLOT_ID")
     print(SUBP)
 
+    #calculate the basal area of each stem recorded in the TREE table
     TREE = TREE.with_columns([
         (np.square(pl.col("DIA")) * 0.005454).alias("BASAL_AREA_STEM")
     ])
-
 
     # group trees by plot cn AND by subplot
     # In MT_CSV, ACTUALHT is generally empty or the same as HT
@@ -75,7 +124,7 @@ def create_polars_dataframe_by_subplot():
         '''
     ).collect()
 
-    #create our SUBPLOT_ID key
+    #create our SUBPLOT_ID key for readability
     TREEGRP = TREEGRP.with_columns(
                                 pl.concat_str(
                                 [
@@ -85,7 +134,8 @@ def create_polars_dataframe_by_subplot():
                                         separator= "_",
                                     ).alias("SUBPLOT_ID"),
                                 )
-    #create our SUBPLOT_ID key
+    #create our SUBPLOTID key for practical use
+    #THIS KEY IS NECESSARY BECAUSE IT CAN BE CONVERTED TO A LONG FOR TRAINING
     TREEGRP = TREEGRP.with_columns(
                                 pl.concat_str(
                                 [
@@ -125,20 +175,106 @@ def create_polars_dataframe_by_subplot():
     FINAL = FINAL.drop_nulls()
     FINAL = FINAL.sort("SUBPLOT_ID")
 
+    #add our climate variables
+    if not os.path.exists(os.path.join(data_dir, "climate_data.csv")):
+        climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]))
 
+    #uses climate_data.csv to add climate data to FINAL
+    FINAL = climate_variables_to_df(FINAL)
 
     print(f"Final DataFrame {FINAL} ")
-    FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",") #write as csv for checks and records
-
-    print(FINAL.select(["SUBPLOT_ID","QMD_TREE", "TREE_COUNT","BASAL_AREA_TREE"]))
+    FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",")  # write as csv for checks and records
 
     #test our filtering by giving it a real code and a fake code
-    pondo = filter_by_forest_type(FINAL, 221)
-    error = filter_by_forest_type(FINAL, 219)
-
+    #pondo = filter_by_forest_type(FINAL, 221)
+    #error = filter_by_forest_type(FINAL, 219)
     return FINAL
 
 
+def climate_variables_to_csv(plots):
+    print("Saving our climate variables to csv file: ")
+    field_names = ["SUBPLOT_ID"]
+    bioclim_data = [rioxarray.open_rasterio(os.path.join(clim_dir, f), parse_coordinates=True,default_name=get_field_name(f, field_names)) for f in bioclim_fnames]
+
+    transformer = Transformer.from_crs("WGS 84", bioclim_data[0].rio.crs, always_xy=True)
+    features = {}
+
+    #open our csv
+    with open(os.path.join(data_dir, "climate_data.csv"), 'w', newline='') as csvfile:
+        csv_writer = csv.DictWriter(csvfile, fieldnames=field_names)
+        csv_writer.writeheader()
+        total_rows = plots.height
+        cur_row = 0
+        for plot in plots.iter_rows(named=True):
+            lat, lon = plot["LAT"], plot["LON"]
+            xx, yy = transformer.transform(lon,lat)
+            features["SUBPLOT_ID"] = plot["SUBPLOT_ID"]
+            for data in bioclim_data:
+                #get our data value
+                value = data.sel(x=xx, y=yy, method='nearest').values
+                features[data.name] = value[0]
+
+            csv_writer.writerow(features)
+            cur_row = cur_row + 1
+            sys.stdout.write(f"\t\r{(cur_row/total_rows)*100} % complete")
+            sys.stdout.flush()
+    print("...Done")
+
+
+
+
+
+def climate_variables_to_df(df):
+    print(f"Assigning climate variables to given data frame: ")
+    csv_df = pl.read_csv(os.path.join(data_dir, "climate_data.csv"), new_columns=bio_names)
+    df = df.join(csv_df, on="SUBPLOT_ID", coalesce=True)
+    return df
+
+
+#function gets our climate variable field name and updates the list of names for processing
+def get_field_name(fname, field_names):
+    name = os.path.split(fname)[1] #split path into filename
+    name = name.split(".")[1].split("_") #split filename into parts
+    name = name[2] + name[3] #combine our two descriptive words to match worldclim coding
+    field_names.append(name) #python allows lists to be mutable! saves us another for loop
+    return name
+
+def filter_by_forest_type(dataframe: pl.DataFrame, fortypcd: int):
+    print(f"Filtering our data by forest type code {fortypcd}")
+    if is_forest_type(fortypcd):
+        return dataframe.filter(pl.col("FORTYPCD") == fortypcd) #if it exists, return our filtered dataframe
+    else:
+        return dataframe #else return unaltered dataframe
+
+
+def is_forest_type(fortypcd: int):
+    with open(os.path.join(data_dir, fortyp_json)) as json_file:
+        typcds = json.load(json_file)
+    values = list(typcds.values())
+    for d in values:
+        if str(fortypcd) in d.keys():
+            print(f"Given forest type code {fortypcd} found")
+            return True
+
+    print(f"Given forest type code {fortypcd} does not exist")
+    return False
+
+
+
+def main():
+    print("DataGrames.py main function")
+    create_polars_dataframe_by_subplot()
+    #create_polars_dataframe_by_plot()
+
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+#OUTDATED
+#not updated with current metrics
 def create_polars_dataframe_by_plot():
     print("Creating Polars DataFrame")
 
@@ -211,38 +347,6 @@ def create_polars_dataframe_by_plot():
     pondo = filter_by_forest_type(FINAL, 221)
     error = filter_by_forest_type(FINAL, 219)
 
+
+
     return FINAL
-
-def filter_by_forest_type(dataframe: pl.DataFrame, fortypcd: int):
-    print(f"Filtering our data by forest type code {fortypcd}")
-    if is_forest_type(fortypcd):
-        return dataframe.filter(pl.col("FORTYPCD") == fortypcd) #if it exists, return our filtered dataframe
-    else:
-        return dataframe #else return unaltered dataframe
-
-
-def is_forest_type(fortypcd: int):
-    with open(os.path.join(data_dir, fortyp_json)) as json_file:
-        typcds = json.load(json_file)
-    values = list(typcds.values())
-    for d in values:
-        if str(fortypcd) in d.keys():
-            print(f"Given forest type code {fortypcd} found")
-            return True
-
-    print(f"Given forest type code {fortypcd} does not exist")
-    return False
-
-
-
-def main():
-    print("DataGrames.py main function")
-    create_polars_dataframe_by_subplot()
-    #create_polars_dataframe_by_plot()
-
-
-
-if __name__ == "__main__":
-    main()
-
-

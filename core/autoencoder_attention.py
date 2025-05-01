@@ -446,6 +446,7 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
     forest_types = plot_data.select(['FORTYPCD']).to_numpy().flatten()
     balive = plot_data.select(['BASAL_AREA_TREE']).to_numpy().flatten()
     max_ht = plot_data.select(['MAX_HT']).to_numpy().flatten()
+    avg_ht = plot_data.select(['AVG_HT']).to_numpy().flatten()
     tree_count = plot_data.select(['TREE_COUNT']).to_numpy().flatten()
     qmd_tree = plot_data.select(['QMD_TREE']).to_numpy().flatten()
 
@@ -474,6 +475,11 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
         'max_ht': {
             'values': max_ht,
             'title': 'Max Height (MAX_HT)',
+            'cmap': 'plasma',
+        },
+        'avg_ht': {
+            'values': avg_ht,
+            'title': 'Avg Height (AVG_HT)',
             'cmap': 'plasma',
         },
         'tree_count': {
@@ -830,7 +836,7 @@ def visualize_prediction_results(model, scaler, X_test, y_test, plot_data, featu
             plot_data_dict[plot_id][col] = row[col_idx]
 
     # Key metrics for analysis
-    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'TREE_COUNT', "QMD_TREE", 'FORTYPCD']
+    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', 'TREE_COUNT', "QMD_TREE", 'FORTYPCD']
 
     # Prepare data for analysis
     predictions = []
@@ -1070,7 +1076,7 @@ def evaluate_comprehensive(model, scaler, X_test, y_test, plot_data, feature_col
     )
 
     # Calculate metrics for key variables
-    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'TREE_COUNT', 'QMD_TREE', 'FORTYPCD',]
+    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', 'TREE_COUNT', 'QMD_TREE', 'FORTYPCD',]
 
     # Store metrics
     metrics = {}
@@ -1138,6 +1144,7 @@ def main():
     feature_cols = [
         "TREE_COUNT",
         'MAX_HT',
+        'AVG_HT',
         'BASAL_AREA_TREE',
         'ELEV',
         'SLOPE',
@@ -1145,7 +1152,26 @@ def main():
         'ASPECT_SIN',
         "LAT",
         'FORTYPCD',
-        "QMD_TREE"
+        "QMD_TREE",
+        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
+        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
+        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
+        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
+        "MAX_TEMP_WARM_MONTH",  # BIO5
+        "MIN_TEMP_COLD_MONTH",  # BIO6
+        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
+        "MEAN_TEMP_WET_QUARTER",  # BIO8
+        "MEAN_TEMP_DRY_QUARTER",  # BIO9
+        "MEAN_TEMP_WARM_QUARTER",  # BIO10
+        "MEAN_TEMP_COLD_QUARTER",  # BIO11
+        "ANNUAL_PRECIP",  # BIO12
+        "PRECIP_WET_MONTH",  # BIO13
+        "PRECIP_DRY_MONTH",  # BIO14
+        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
+        "PRECIP_WET_QUARTER",  # BIO16
+        "PRECIP_DRY_QUARTER",  # BIO17
+        "PRECIP_WARM_QUARTER",  # BIO18
+        "PRECIP_COLD_QUARTER"  # BIO19
     ]
 
 
@@ -1155,6 +1181,7 @@ def main():
         'TREE_COUNT': 3.0,  # Very important,
         "QMD_TREE": 4.0,  # Very important
         'MAX_HT': 3.0,  # Very important
+        'AVG_HT': 3.0,
         'FORTYPCD': 5.0,  # Important for forest type matching
         'ELEV': 1.0,  # Standard importance
         'SLOPE': 1.0,  # Standard importance
