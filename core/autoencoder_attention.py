@@ -197,7 +197,7 @@ def train_autoencoder(plot_data, feature_cols, feature_weights=None, latent_dim=
     """
     # Process input data
     X = plot_data.select(feature_cols).to_numpy()
-    plot_ids = plot_data.select(['PLT_CN']).to_numpy().flatten()
+    plot_ids = plot_data.select(['SUBPLOTID']).to_numpy().flatten()
 
     # Handle NaN values
     if np.isnan(X).any():
@@ -241,13 +241,13 @@ def train_autoencoder(plot_data, feature_cols, feature_weights=None, latent_dim=
         # Default weights emphasizing important metrics
         default_weights = []
         for col in feature_cols:
-            if col == 'BALIVE':
+            if col == 'BASAL_AREA_TREE':
                 default_weights.append(4.0)
-            elif col == 'TPA_UNADJ':
+            elif col == 'TREE_COUNT':
                 default_weights.append(3.0)
             elif col == 'MAX_HT':
                 default_weights.append(3.0)
-            elif col == 'LIVE_CANOPY_CVR_PCT':
+            elif col == 'QMD_TREE':
                 default_weights.append(2.0)
             elif col == 'FORTYPCD':
                 default_weights.append(1.5)
@@ -374,7 +374,7 @@ def find_most_similar_plots(model, scaler, X_test, y_test, plot_data, feature_co
     X_all_scaled = scaler.transform(X_all)
 
     # Use plot_ids array that aligns with X_all
-    plot_ids_all = plot_data.select(['PLT_CN']).to_numpy().flatten()
+    plot_ids_all = plot_data.select(['SUBPLOTID']).to_numpy().flatten()
 
     X_all_tensor = torch.tensor(X_all_scaled, dtype=torch.float32)
 
@@ -444,10 +444,11 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
 
     # Get key metrics for coloring
     forest_types = plot_data.select(['FORTYPCD']).to_numpy().flatten()
-    balive = plot_data.select(['BALIVE']).to_numpy().flatten()
+    balive = plot_data.select(['BASAL_AREA_TREE']).to_numpy().flatten()
     max_ht = plot_data.select(['MAX_HT']).to_numpy().flatten()
-    tpa = plot_data.select(['TPA_UNADJ']).to_numpy().flatten()
-    canopy_cover = plot_data.select(['LIVE_CANOPY_CVR_PCT']).to_numpy().flatten()
+    avg_ht = plot_data.select(['AVG_HT']).to_numpy().flatten()
+    tree_count = plot_data.select(['TREE_COUNT']).to_numpy().flatten()
+    qmd_tree = plot_data.select(['QMD_TREE']).to_numpy().flatten()
 
     # Get embeddings
     X_tensor = torch.tensor(X_scaled, dtype=torch.float32)
@@ -476,14 +477,19 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
             'title': 'Max Height (MAX_HT)',
             'cmap': 'plasma',
         },
-        'tpa': {
-            'values': tpa,
-            'title': 'Trees Per Acre (TPA_UNADJ)',
+        'avg_ht': {
+            'values': avg_ht,
+            'title': 'Avg Height (AVG_HT)',
+            'cmap': 'plasma',
+        },
+        'tree_count': {
+            'values': tree_count,
+            'title': 'Tree Count',
             'cmap': 'inferno',
         },
-        'canopy_cover': {
-            'values': canopy_cover,
-            'title': 'Live Canopy Cover Percent',
+        'qmd_tree': {
+            'values': qmd_tree,
+            'title': 'QMD of tree stems ( DIA >= 5)',
             'cmap': 'cividis',
         }
     }
@@ -539,8 +545,8 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
         alpha=0.7,
         s=30
     )
-    plt.colorbar(scatter2, label='BALIVE')
-    plt.title('Colored by Basal Area Live', fontsize=14)
+    plt.colorbar(scatter2, label='BASAL_AREA_TREE')
+    plt.title('Colored by Basal Area of Tree Stems', fontsize=14)
     plt.grid(True, linestyle='--', alpha=0.7)
 
     # MAX_HT (bottom left)
@@ -562,13 +568,13 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, save_path='embe
     scatter4 = plt.scatter(
         embeddings_2d[:, 0],
         embeddings_2d[:, 1],
-        c=canopy_cover,
+        c=qmd_tree,
         cmap='cividis',
         alpha=0.7,
         s=30
     )
-    plt.colorbar(scatter4, label='LIVE_CANOPY_CVR_PCT')
-    plt.title('Colored by Canopy Cover Percent', fontsize=14)
+    plt.colorbar(scatter4, label='QMD_TREE')
+    plt.title('Colored by QMD', fontsize=14)
     plt.grid(True, linestyle='--', alpha=0.7)
 
     plt.suptitle('t-SNE Visualization of Forest Plot Embeddings', fontsize=20)
@@ -820,7 +826,7 @@ def visualize_prediction_results(model, scaler, X_test, y_test, plot_data, featu
     plot_data_dict = {}
     for i in range(len(plot_data)):
         row = plot_data.row(i)
-        plot_id = row[plot_data.columns.index('PLT_CN')]
+        plot_id = row[plot_data.columns.index('SUBPLOTID')]
 
         if plot_id not in plot_data_dict:
             plot_data_dict[plot_id] = {}
@@ -830,7 +836,7 @@ def visualize_prediction_results(model, scaler, X_test, y_test, plot_data, featu
             plot_data_dict[plot_id][col] = row[col_idx]
 
     # Key metrics for analysis
-    key_metrics = ['BALIVE', 'MAX_HT', 'TPA_UNADJ', 'LIVE_CANOPY_CVR_PCT', "QMD_RMRS", 'FORTYPCD']
+    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', 'TREE_COUNT', "QMD_TREE", 'FORTYPCD']
 
     # Prepare data for analysis
     predictions = []
@@ -1070,7 +1076,7 @@ def evaluate_comprehensive(model, scaler, X_test, y_test, plot_data, feature_col
     )
 
     # Calculate metrics for key variables
-    key_metrics = ['BALIVE', 'MAX_HT', 'TPA_UNADJ', 'LIVE_CANOPY_CVR_PCT', 'FORTYPCD', "QMD_RMRS"]
+    key_metrics = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', 'TREE_COUNT', 'QMD_TREE', 'FORTYPCD',]
 
     # Store metrics
     metrics = {}
@@ -1132,31 +1138,50 @@ def main():
     plots_dir, data_dir = create_output_directories()
 
     # Load data
-    from DataFrames import create_polars_dataframe
-    plot_data = create_polars_dataframe()
+    from DataFrames import create_polars_dataframe_by_subplot
+    plot_data = create_polars_dataframe_by_subplot()
 
     feature_cols = [
-        'LIVE_CANOPY_CVR_PCT',
-        "TPA_UNADJ",
+        "TREE_COUNT",
         'MAX_HT',
-        'BALIVE',
+        'AVG_HT',
+        'BASAL_AREA_TREE',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
         'ASPECT_SIN',
         "LAT",
         'FORTYPCD',
-        "QMD_RMRS"
+        "QMD_TREE",
+        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
+        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
+        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
+        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
+        "MAX_TEMP_WARM_MONTH",  # BIO5
+        "MIN_TEMP_COLD_MONTH",  # BIO6
+        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
+        "MEAN_TEMP_WET_QUARTER",  # BIO8
+        "MEAN_TEMP_DRY_QUARTER",  # BIO9
+        "MEAN_TEMP_WARM_QUARTER",  # BIO10
+        "MEAN_TEMP_COLD_QUARTER",  # BIO11
+        "ANNUAL_PRECIP",  # BIO12
+        "PRECIP_WET_MONTH",  # BIO13
+        "PRECIP_DRY_MONTH",  # BIO14
+        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
+        "PRECIP_WET_QUARTER",  # BIO16
+        "PRECIP_DRY_QUARTER",  # BIO17
+        "PRECIP_WARM_QUARTER",  # BIO18
+        "PRECIP_COLD_QUARTER"  # BIO19
     ]
 
 
     # Define custom feature weights
     feature_weights = {
-        'BALIVE': 4.0,  # Most important
-        'TPA_UNADJ': 3.0,  # Very important,
-        "QMD_RMRS": 4.0,  # Very important
+        'BASAL_AREA_TREE': 4.0,  # Most important
+        'TREE_COUNT': 3.0,  # Very important,
+        "QMD_TREE": 4.0,  # Very important
         'MAX_HT': 3.0,  # Very important
-        'LIVE_CANOPY_CVR_PCT': 2.0,  # Important
+        'AVG_HT': 3.0,
         'FORTYPCD': 5.0,  # Important for forest type matching
         'ELEV': 1.0,  # Standard importance
         'SLOPE': 1.0,  # Standard importance

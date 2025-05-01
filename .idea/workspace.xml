@@ -4,13 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation.">
-      <change afterPath="$PROJECT_DIR$/core/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/RandomForestPlotImputation.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/RandomForestPlotImputation.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+    <list default="true" id="48dea282-74c5-47f7-bc47-627613b720c9" name="Changes" comment="Modified autoencoder.py to look at subplot level instead of plot.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/core/DataFrames.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/DataFrames.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/autoencoder_2.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_2.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/core/autoencoder_attention.py" beforeDir="false" afterPath="$PROJECT_DIR$/core/autoencoder_attention.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,6 +56,9 @@
     "Python tests.Doctests in frame.executor": "Debug",
     "Python.DataFrames.executor": "Run",
     "Python.RandomForest.executor": "Run",
+    "Python.autoencoder.executor": "Run",
+    "Python.autoencoder_2.executor": "Debug",
+    "Python.autoencoder_attention.executor": "Run",
     "Python.dataframes.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
@@ -67,6 +68,11 @@
     "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Jacob Armbrecht\ORISE Pycharm\PlotImputation\core" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -99,7 +105,55 @@
       <option name="project" value="LOCAL" />
       <updated>1738704665848</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="Added functionality to get FIA data from SQL Lite database instead of csv files.">
+      <option name="closed" value="true" />
+      <created>1741378134149</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1741378134149</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Added functionality to get FIA data from SQL Lite database instead of csv files. Cleaned up and organized our DataFrame creation process to ensure easy modifications. Added initial subplot column ideas.">
+      <option name="closed" value="true" />
+      <created>1741389392294</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1741389392294</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Created a json for forest type codes. Added functions to filter our data by forest type codes.">
+      <option name="closed" value="true" />
+      <created>1741700001630</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1741700001630</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present.">
+      <option name="closed" value="true" />
+      <created>1742748546309</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1742748546309</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Created unique SUBPLOT_ID key for dataframes for joining and sorting.">
+      <option name="closed" value="true" />
+      <created>1742923087586</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1742923087586</updated>
+    </task>
+    <task id="LOCAL-00008" summary="Modified autoencoder.py to look at subplot level instead of plot.">
+      <option name="closed" value="true" />
+      <created>1743622941743</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1743622941743</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
@@ -115,20 +169,46 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation." />
-    <option name="LAST_COMMIT_MESSAGE" value="Arranged data frame to utilize grouped data points per plot. Added basic RandomForest implementation." />
+    <MESSAGE value="Added functionality to get FIA data from SQL Lite database instead of csv files." />
+    <MESSAGE value="Added functionality to get FIA data from SQL Lite database instead of csv files. Cleaned up and organized our DataFrame creation process to ensure easy modifications. Added initial subplot column ideas." />
+    <MESSAGE value="Created a json for forest type codes. Added functions to filter our data by forest type codes." />
+    <MESSAGE value="Trees are now grouped by PLT_CN and SUBP. Changed joining fashion to maximize FINAL dataframe without compromising data integrity. No nulls present." />
+    <MESSAGE value="Created unique SUBPLOT_ID key for dataframes for joining and sorting." />
+    <MESSAGE value="Modified autoencoder.py to look at subplot level instead of plot." />
+    <option name="LAST_COMMIT_MESSAGE" value="Modified autoencoder.py to look at subplot level instead of plot." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/core/DataFrames.py</url>
-          <line>23</line>
-          <option name="timeStamp" value="1" />
+          <url>file://$PROJECT_DIR$/core/autoencoder_2.py</url>
+          <line>1126</line>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/core/database.py</url>
-          <line>12</line>
-          <option name="timeStamp" value="2" />
+          <url>file://$PROJECT_DIR$/core/autoencoder_2.py</url>
+          <line>1089</line>
+          <option name="timeStamp" value="3" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder_attention.py</url>
+          <line>211</line>
+          <option name="timeStamp" value="5" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>122</line>
+          <option name="timeStamp" value="6" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>15</line>
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/core/autoencoder.py</url>
+          <line>109</line>
+          <option name="timeStamp" value="8" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
