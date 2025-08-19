@@ -1,3 +1,7 @@
+"""
+dataframes.py
+"""
+
 import sys
 import polars as pl
 import os
@@ -11,6 +15,7 @@ from pyproj import Transformer
 sql_conn_str = "sqlite://"
 fortyp_json = "forest_type_codes.json"
 data_dir = "data"
+STATE = "AZ"
 
 #FIADB desired columns
 cond_selected_columns = ["PLT_CN", "ASPECT", "SLOPE", "FORTYPCD"]
@@ -103,18 +108,18 @@ def create_polars_dataframe_by_subplot():
     print("Creating Polars DataFrame")
 
     #retrieve our data from the SQL database
-    COND = db.get_df_from_db("MT","COND", cond_selected_columns)
+    COND = db.get_df_from_db(STATE,"COND", cond_selected_columns)
     COND = COND.sort("PLT_CN")
 
-    TREE = db.get_df_from_db("MT", "TREE", tree_selected_columns)
+    TREE = db.get_df_from_db(STATE, "TREE", tree_selected_columns)
     TREE = TREE.sort("PLT_CN")
 
-    PLOT = db.get_df_from_db("MT", "PLOT", plot_selected_columns)
+    PLOT = db.get_df_from_db(STATE, "PLOT", plot_selected_columns)
     PLOT = PLOT.rename({"CN": "PLT_CN"})
     PLOT = PLOT.sort("PLT_CN")
 
 
-    SUBP = db.get_df_from_db("MT", "SUBPLOT", subp_selected_columns)
+    SUBP = db.get_df_from_db(STATE, "SUBPLOT", subp_selected_columns)
     SUBP = SUBP.join(COND, on="PLT_CN", how="right", coalesce=True)
     SUBP = SUBP.drop_nulls()
     #create our subplot id for readability
@@ -206,11 +211,14 @@ def create_polars_dataframe_by_subplot():
     FINAL = FINAL.sort("SUBPLOT_ID")
 
     #add our climate variables
-    if not os.path.exists(os.path.join(data_dir, "climate_data.csv")):
+    if not os.path.exists(os.path.join(data_dir, f"climate_data_{STATE}.csv")):
         climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]))
 
     #uses climate_data.csv to add climate data to FINAL
     FINAL = climate_variables_to_df(FINAL)
+
+    # Drop NaN values
+    FINAL = FINAL.drop_nulls()
 
     print(f"Final DataFrame {FINAL} ")
     FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",")  # write as csv for checks and records
@@ -218,7 +226,11 @@ def create_polars_dataframe_by_subplot():
     #test our filtering by giving it a real code and a fake code
     #pondo = filter_by_forest_type(FINAL, 221)
     #error = filter_by_forest_type(FINAL, 219)
-    return FINAL.select(feature_cols)
+    # return FINAL.select(feature_cols)
+
+    # Drop
+
+    return FINAL
 
 
 def climate_variables_to_csv(plots):
@@ -230,7 +242,7 @@ def climate_variables_to_csv(plots):
     features = {}
 
     #open our csv
-    with open(os.path.join(data_dir, "climate_data.csv"), 'w', newline='') as csvfile:
+    with open(os.path.join(data_dir, f"climate_data_{STATE}.csv"), 'w', newline='') as csvfile:
         csv_writer = csv.DictWriter(csvfile, fieldnames=field_names)
         csv_writer.writeheader()
         total_rows = plots.height
@@ -257,7 +269,7 @@ def climate_variables_to_csv(plots):
 
 def climate_variables_to_df(df):
     print(f"Assigning climate variables to given data frame: ")
-    csv_df = pl.read_csv(os.path.join(data_dir, "climate_data.csv"), new_columns=bio_names)
+    csv_df = pl.read_csv(os.path.join(data_dir, f"climate_data_{STATE}.csv"), new_columns=bio_names)
     df = df.join(csv_df, on="SUBPLOT_ID", coalesce=True)
     return df
 
@@ -310,13 +322,13 @@ def create_polars_dataframe_by_plot():
     print("Creating Polars DataFrame")
 
     #retrieve our data from the SQL database
-    COND = db.get_df_from_db("MT","COND", cond_selected_columns)
+    COND = db.get_df_from_db(STATE,"COND", cond_selected_columns)
     COND = COND.sort("PLT_CN")
 
-    TREE = db.get_df_from_db("MT", "TREE", tree_selected_columns)
+    TREE = db.get_df_from_db(STATE, "TREE", tree_selected_columns)
     TREE = TREE.sort("PLT_CN")
 
-    PLOT = db.get_df_from_db("MT","PLOT", plot_selected_columns)
+    PLOT = db.get_df_from_db(STATE,"PLOT", plot_selected_columns)
     PLOT = PLOT.rename({"CN": "PLT_CN"})
     PLOT = PLOT.sort("PLT_CN")
 
