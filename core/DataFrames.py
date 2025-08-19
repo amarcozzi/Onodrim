@@ -188,7 +188,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     FINAL = FINAL.sort("SUBPLOT_ID")
 
     #add our climate variables
-    if not os.path.exists(os.path.join(data_dir, f"climate_data_{state}.csv")):
+    if not os.path.exists(os.path.join(data_dir, f"climate_data_{state}_{climate_resolution}.csv")):
         climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]), state=state, resolution=climate_resolution)
 
     #uses climate_data.csv to add climate data to FINAL
@@ -238,7 +238,7 @@ def climate_variables_to_csv(plots, state, resolution="10m"):
     features = {}
 
     #open our csv
-    with open(os.path.join(data_dir, f"climate_data_{state}.csv"), 'w', newline='') as csvfile:
+    with open(os.path.join(data_dir, f"climate_data_{state}_{resolution}.csv"), 'w', newline='') as csvfile:
         csv_writer = csv.DictWriter(csvfile, fieldnames=field_names)
         csv_writer.writeheader()
         total_rows = plots.height
@@ -270,8 +270,8 @@ def climate_variables_to_df(df, state):
 #function gets our climate variable field name and updates the list of names for processing
 def get_field_name(fname, field_names):
     name = os.path.split(fname)[1] #split path into filename
-    name = name.split(".")[1].split("_") #split filename into parts
-    name = name[2] + name[3] #combine our two descriptive words to match worldclim coding
+    name = name.split("_") #split filename into parts
+    name = name[2] + name[3].split(".")[0] #combine our two descriptive words to match worldclim coding
     field_names.append(name) #python allows lists to be mutable! saves us another for loop
     return name
 
