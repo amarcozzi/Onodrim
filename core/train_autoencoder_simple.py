@@ -71,7 +71,7 @@ def main():
 
     # --- Data Loading and Preparation ---
     print("Loading data...")
-    plot_data = create_polars_dataframe_by_subplot()
+    plot_data = create_polars_dataframe_by_subplot("MT")
 
     print("Preparing data loaders...")
     train_loader, test_loader, scaler, X_test, y_test = prepare_data(
