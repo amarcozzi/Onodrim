@@ -1,3 +1,7 @@
+"""
+autoencoder_simple.py
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -102,7 +106,6 @@ def train_autoencoder(plot_data, feature_weights=None, embedding_dim=32, batch_s
         'SLOPE',
         'ASPECT_COS',
         'ASPECT_SIN',
-        'FORTYPCD'
     ]
 
 
@@ -638,9 +641,9 @@ def main():
         'scaler': scaler,
         'feature_cols': feature_cols,
         'feature_weights': feature_weights
-    }, 'forest_autoencoder_model.pt')
+    }, 'autoencoder_simple.pt')
 
-    print("Model saved as forest_autoencoder_model.pt")
+    print("Model saved as autoencoder_simple.pt")
 
 
 if __name__ == "__main__":

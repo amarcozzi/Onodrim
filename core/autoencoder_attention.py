@@ -1,3 +1,7 @@
+"""
+autoencoder_attention.py
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -1151,7 +1155,7 @@ def main():
         'ASPECT_COS',
         'ASPECT_SIN',
         "LAT",
-        'FORTYPCD',
+        # 'FORTYPCD',
         "QMD_TREE",
         "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
         "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
@@ -1193,19 +1197,20 @@ def main():
 
     # Train residual autoencoder
     latent_dim = 16
-    hidden_dims = [32]
+    hidden_dims = [64]
     dropout_rate = 0.2
+    use_attention = True
     model, scaler, X_test, y_test, plot_data, feature_cols = train_autoencoder(
         plot_data,
         feature_cols,
         feature_weights=feature_weights,
         latent_dim=latent_dim,  # Latent dimension size
         hidden_dims=hidden_dims,  # Residual block dimensions
-        batch_size=128,
+        batch_size=256,
         learning_rate=0.001,
-        num_epochs=300,  # Allow longer training with early stopping
+        num_epochs=250,  # Allow longer training with early stopping
         dropout_rate=0.2,
-        use_attention=False
+        use_attention=use_attention
     )
 
     # Comprehensive evaluation
@@ -1222,9 +1227,10 @@ def main():
         'feature_weights': feature_weights,
         'model_params': {
             'input_dim': len(feature_cols),
-            'latent_dim': 8,
-            'hidden_dims': [16, 16, 16, 16, 16, 16, 16, 16, 16, 16],
-            'dropout_rate': 0.3
+            'latent_dim': latent_dim,
+            'hidden_dims': hidden_dims,
+            'dropout_rate': dropout_rate,
+            'use_attention': use_attention
         },
         'evaluation_metrics': evaluation['metrics']
     }, os.path.join(data_dir, 'attention_autoencoder_model.pt'))
