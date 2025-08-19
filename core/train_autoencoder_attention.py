@@ -26,13 +26,13 @@ def main():
     feature_cols = [
         "TREE_COUNT",
         'MAX_HT',
-        'AVG_HT',
         'BASAL_AREA_TREE',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
         'ASPECT_SIN',
         "LAT",
+        "LON",
         "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
         "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
         "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
@@ -67,7 +67,7 @@ def main():
     hidden_dims = [64]
     batch_size = 256
     learning_rate = 0.001
-    num_epochs = 250
+    num_epochs = 1000
     dropout_rate = 0.2
     use_attention = True
 

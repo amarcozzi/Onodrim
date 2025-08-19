@@ -8,7 +8,10 @@ import pandas as pd
 from visualization import (
     visualize_embeddings,
     visualize_metric_performance,
-    display_similarity_examples
+    display_similarity_examples,
+    calculate_regression_metrics,
+    calculate_classification_metrics,
+    UNITS
 )
 
 def find_most_similar_plots(model, scaler, all_data, feature_cols, plot_id_col, test_features, test_ids, top_k=5):
@@ -41,19 +44,47 @@ def find_most_similar_plots(model, scaler, all_data, feature_cols, plot_id_col, 
 
 def evaluate_predictions(predictions_df, key_metrics_con, key_metrics_cat):
     """
-    Calculates performance metrics for continuous (RMSE) and categorical (Accuracy) variables.
+    Calculates comprehensive performance metrics for continuous and categorical variables.
     """
     metrics = {}
     print("\n--- Quantitative Evaluation ---")
-    for metric in key_metrics_con:
-        rmse = np.sqrt(np.mean(predictions_df[f'error_{metric}'] ** 2))
-        metrics[f'{metric}_rmse'] = rmse
-        print(f"RMSE for {metric}: {rmse:.4f}")
 
+    # Continuous metrics
+    for metric in key_metrics_con:
+        true_vals = predictions_df[f'true_{metric}']
+        pred_vals = predictions_df[f'pred_{metric}']
+        rmse, mae, r2 = calculate_regression_metrics(true_vals, pred_vals)
+
+        metrics[f'{metric}_rmse'] = rmse
+        metrics[f'{metric}_mae'] = mae
+        metrics[f'{metric}_r2'] = r2
+
+        units = UNITS.get(metric, '')
+        unit_str = f" {units}" if units else ""
+
+        print(f"Metrics for {metric}:")
+        print(f"  RMSE: {rmse:.4f}{unit_str}")
+        print(f"  MAE: {mae:.4f}{unit_str}")
+        print(f"  R²: {r2:.4f}")
+        print()
+
+    # Categorical metrics
     for metric in key_metrics_cat:
-        accuracy = (predictions_df[f'true_{metric}'] == predictions_df[f'pred_{metric}']).mean()
-        metrics[f'{metric}_accuracy'] = accuracy
-        print(f"Accuracy for {metric}: {accuracy:.2%}")
+        true_vals = predictions_df[f'true_{metric}']
+        pred_vals = predictions_df[f'pred_{metric}']
+        classification_metrics = calculate_classification_metrics(true_vals, pred_vals)
+
+        # Store all classification metrics
+        for key, value in classification_metrics.items():
+            if key != 'full_report':  # Don't store the full report in metrics dict
+                metrics[f'{metric}_{key}'] = value
+
+        print(f"Classification metrics for {metric}:")
+        print(f"  Accuracy: {classification_metrics['accuracy']:.4f}")
+        print(f"  Macro Precision: {classification_metrics['macro_precision']:.4f}")
+        print(f"  Macro Recall: {classification_metrics['macro_recall']:.4f}")
+        print(f"  Macro F1-Score: {classification_metrics['macro_f1']:.4f}")
+        print()
 
     return metrics
 
@@ -100,12 +131,20 @@ def run_evaluation(model, scaler, plot_data, feature_cols, plot_id_col, X_test, 
     # 4. Quantitative Evaluation
     metrics = evaluate_predictions(predictions_df, key_metrics_con, key_metrics_cat)
 
-    # 5. Visual Evaluation
+    # 5. Visual Evaluation - store detailed metrics from visualizations
+    detailed_metrics = {}
+
     for metric in key_metrics_con:
-        visualize_metric_performance(predictions_df, metric, is_categorical=False, model_name=model_name)
+        viz_metrics = visualize_metric_performance(predictions_df, metric, is_categorical=False, model_name=model_name)
+        detailed_metrics[f'{metric}_detailed'] = viz_metrics
+
     for metric in key_metrics_cat:
-        visualize_metric_performance(predictions_df, metric, is_categorical=True, model_name=model_name)
+        viz_metrics = visualize_metric_performance(predictions_df, metric, is_categorical=True, model_name=model_name)
+        detailed_metrics[f'{metric}_detailed'] = viz_metrics
 
     display_similarity_examples(results, plot_data, plot_id_col, all_metrics, model_name, num_examples=5)
 
-    return metrics
+    # Combine metrics
+    all_metrics_combined = {**metrics, **detailed_metrics}
+
+    return all_metrics_combined
