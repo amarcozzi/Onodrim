@@ -1155,7 +1155,6 @@ def main():
         'ASPECT_COS',
         'ASPECT_SIN',
         "LAT",
-        # 'FORTYPCD',
         "QMD_TREE",
         "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
         "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
