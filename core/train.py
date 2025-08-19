@@ -6,13 +6,14 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from loss import CustomMSELoss
 
-def train_autoencoder(model, train_loader, test_loader, feature_cols, feature_weights=None,
+def train_autoencoder(model, model_name, train_loader, test_loader, feature_cols, feature_weights=None,
                       learning_rate=0.001, num_epochs=150, patience=50):
     """
     Trains an autoencoder model.
 
     Args:
         model (nn.Module): The autoencoder model to train.
+        model_name (str): The name of the model.
         train_loader (DataLoader): The DataLoader for the training set.
         test_loader (DataLoader): The DataLoader for the test set.
         feature_cols (list): List of feature column names.
@@ -89,7 +90,7 @@ def train_autoencoder(model, train_loader, test_loader, feature_cols, feature_we
     plt.ylabel('Loss')
     plt.title('Autoencoder Training and Validation Loss')
     plt.legend()
-    plt.savefig('training_curve.png')
+    plt.savefig(f'plots/{model_name}_training_curve.png')
     plt.close()
 
     return model, train_losses, val_losses

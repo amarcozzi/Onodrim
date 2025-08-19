@@ -6,16 +6,18 @@ Main script to train and evaluate the Residual Autoencoder.
 
 import torch
 from DataFrames import create_polars_dataframe_by_subplot
-from utils import prepare_data
+from utils import prepare_data, create_output_directories
 from models import ResidualAutoencoder
 from train import train_autoencoder
-from evaluation import find_most_similar_plots, evaluate_predictions
-from visualization import visualize_embeddings, display_similarity_results
+from evaluation import run_evaluation
 
 def main():
     # --- Configuration for Residual Autoencoder ---
     MODEL_NAME = 'residual_autoencoder'
     PLOT_ID_COL = 'SUBPLOTID'
+
+    # --- Setup ---
+    create_output_directories()
 
     # Feature columns used by this model
     feature_cols = [
@@ -48,9 +50,10 @@ def main():
         "PRECIP_WARM_QUARTER",  # BIO18
         "PRECIP_COLD_QUARTER"  # BIO19
     ]
-    # Key metrics for evaluation
-    key_metrics = ["TREE_COUNT", 'MAX_HT', 'BASAL_AREA_TREE', "QMD_TREE", 'AVG_HT', "FORTYPCD"]
 
+    # Define continuous and categorical metrics for evaluation
+    key_metrics_con = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', "TREE_COUNT"]
+    key_metrics_cat = ['FORTYPCD']
 
     # Custom feature weights
     feature_weights = {}
@@ -82,34 +85,26 @@ def main():
     # --- Training ---
     print("Starting training...")
     model, _, _ = train_autoencoder(
-        model, train_loader, test_loader, feature_cols,
+        model, MODEL_NAME, train_loader, test_loader, feature_cols,
         feature_weights=feature_weights, learning_rate=learning_rate, num_epochs=num_epochs
     )
 
     # --- Evaluation and Visualization ---
     print("Starting evaluation and visualization...")
-    visualize_embeddings(
-        model, scaler, plot_data, feature_cols,
-        color_by_col='FORTYPCD', save_path=f'{MODEL_NAME}_tsne.png'
+    evaluation_metrics = run_evaluation(
+        model, scaler, plot_data, feature_cols, PLOT_ID_COL, X_test, y_test,
+        key_metrics_con, key_metrics_cat, MODEL_NAME
     )
-
-    results = find_most_similar_plots(
-        model, scaler, plot_data, feature_cols, PLOT_ID_COL, X_test, y_test
-    )
-
-    display_similarity_results(results, plot_data, PLOT_ID_COL, key_metrics, num_examples=3)
-
-    evaluate_predictions(results, plot_data, PLOT_ID_COL, key_metrics)
 
     # --- Save Model ---
-    print("Saving model...")
+    save_path = f'weights/{MODEL_NAME}.pt'
     torch.save({
         'model_state_dict': model.state_dict(),
         'scaler': scaler,
         'feature_cols': feature_cols,
-        'feature_weights': feature_weights
-    }, f'{MODEL_NAME}.pt')
-    print(f"Model saved as {MODEL_NAME}.pt")
+        'evaluation_metrics': evaluation_metrics
+    }, save_path)
+    print(f"Model and scaler saved to {save_path}")
 
 if __name__ == "__main__":
     main()

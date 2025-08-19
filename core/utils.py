@@ -1,6 +1,7 @@
 """
 utils.py
 """
+import os
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
@@ -53,3 +54,9 @@ def prepare_data(plot_data, feature_cols, plot_id_col, batch_size=64, test_size=
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader, scaler, X_test, y_test
+
+def create_output_directories():
+    """Creates directories for saving plots and model weights if they don't exist."""
+    os.makedirs("./plots", exist_ok=True)
+    os.makedirs("./weights", exist_ok=True)
+    print("Created 'plots' and 'weights' directories.")
