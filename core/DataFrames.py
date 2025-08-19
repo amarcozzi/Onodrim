@@ -57,28 +57,6 @@ feature_cols = [
     ]
 
 
-#Bioclimatic data file paths
-bioclim_fnames = [
-    "wc2.1_10m_bio_1.tif",
-    "wc2.1_10m_bio_2.tif",
-    "wc2.1_10m_bio_3.tif",
-    "wc2.1_10m_bio_4.tif",
-    "wc2.1_10m_bio_5.tif",
-    "wc2.1_10m_bio_6.tif",
-    "wc2.1_10m_bio_7.tif",
-    "wc2.1_10m_bio_8.tif",
-    "wc2.1_10m_bio_9.tif",
-    "wc2.1_10m_bio_10.tif",
-    "wc2.1_10m_bio_11.tif",
-    "wc2.1_10m_bio_12.tif",
-    "wc2.1_10m_bio_13.tif",
-    "wc2.1_10m_bio_14.tif",
-    "wc2.1_10m_bio_15.tif",
-    "wc2.1_10m_bio_16.tif",
-    "wc2.1_10m_bio_17.tif",
-    "wc2.1_10m_bio_18.tif",
-    "wc2.1_10m_bio_19.tif"
-]
 #LIST OF OUR NAMES FOR RENAMING WHEN READING CSV
 bio_names = ["SUBPLOT_ID",              #CSV HAS SUBPLOT_ID
              "MEAN_TEMP",               #BIO1   ANNUAL MEAN TEMP
@@ -103,7 +81,7 @@ bio_names = ["SUBPLOT_ID",              #CSV HAS SUBPLOT_ID
              ]
 clim_dir = os.path.join(data_dir, "climatic")
 
-def create_polars_dataframe_by_subplot(state):
+def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     print("Creating Polars DataFrame")
 
     #retrieve our data from the SQL database
@@ -211,7 +189,7 @@ def create_polars_dataframe_by_subplot(state):
 
     #add our climate variables
     if not os.path.exists(os.path.join(data_dir, f"climate_data_{state}.csv")):
-        climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]), state=state)
+        climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]), state=state, resolution=climate_resolution)
 
     #uses climate_data.csv to add climate data to FINAL
     FINAL = climate_variables_to_df(FINAL, state=state)
@@ -225,7 +203,33 @@ def create_polars_dataframe_by_subplot(state):
     return FINAL
 
 
-def climate_variables_to_csv(plots, state):
+def climate_variables_to_csv(plots, state, resolution="10m"):
+    if resolution not in ["10m", "5m", "2.5m"]:
+        raise ValueError("Resolution must be one of '10m', '5m', or '2.5m'")
+    
+    # Bioclimatic data file paths
+    bioclim_fnames = [
+        f"wc2.1_{resolution}_bio_1.tif",
+        f"wc2.1_{resolution}_bio_2.tif",
+        f"wc2.1_{resolution}_bio_3.tif",
+        f"wc2.1_{resolution}_bio_4.tif",
+        f"wc2.1_{resolution}_bio_5.tif",
+        f"wc2.1_{resolution}_bio_6.tif",
+        f"wc2.1_{resolution}_bio_7.tif",
+        f"wc2.1_{resolution}_bio_8.tif",
+        f"wc2.1_{resolution}_bio_9.tif",
+        f"wc2.1_{resolution}_bio_10.tif",
+        f"wc2.1_{resolution}_bio_11.tif",
+        f"wc2.1_{resolution}_bio_12.tif",
+        f"wc2.1_{resolution}_bio_13.tif",
+        f"wc2.1_{resolution}_bio_14.tif",
+        f"wc2.1_{resolution}_bio_15.tif",
+        f"wc2.1_{resolution}_bio_16.tif",
+        f"wc2.1_{resolution}_bio_17.tif",
+        f"wc2.1_{resolution}_bio_18.tif",
+        f"wc2.1_{resolution}_bio_19.tif"
+    ]
+    
     print("Saving our climate variables to csv file: ")
     field_names = ["SUBPLOT_ID"]
     bioclim_data = [rioxarray.open_rasterio(os.path.join(clim_dir, f), parse_coordinates=True,default_name=get_field_name(f, field_names)) for f in bioclim_fnames]
