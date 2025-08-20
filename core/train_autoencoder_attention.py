@@ -66,8 +66,8 @@ def main():
     latent_dim = 16
     hidden_dims = [64]
     batch_size = 256
-    learning_rate = 0.001
-    num_epochs = 1000
+    learning_rate = 1e-4
+    num_epochs = 10000
     dropout_rate = 0.2
     use_attention = True
 
@@ -92,7 +92,7 @@ def main():
     print("Starting training...")
     model, _, _ = train_autoencoder(
         model, MODEL_NAME, train_loader, test_loader, feature_cols,
-        feature_weights=feature_weights, learning_rate=learning_rate, num_epochs=num_epochs
+        feature_weights=feature_weights, learning_rate=learning_rate, num_epochs=num_epochs, patience=2500
     )
 
     # --- Evaluation and Visualization ---
