@@ -124,13 +124,13 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
         query='''
             SELECT TREE.PLT_CN, TREE.SUBP, 
                     COUNT(TREE.CN) AS STEM_COUNT,
-                    SUM(IF(TREE.DIA>=5.0,1,0)) AS TREE_COUNT,
-                    SUM(IF(TREE.DIA<5.0,1,0)) AS SAPL_COUNT, 
-                    SUM(IF(TREE.DIA>=5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_TREE, 
-                    SUM(IF(TREE.DIA<5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_SAPL, 
+                    SUM(IF(TREE.DIA>5.0,1,0)) AS TREE_COUNT,
+                    SUM(IF(TREE.DIA>=5.0,1,0)) AS SAPL_COUNT, 
+                    SUM(IF(TREE.DIA>5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_TREE, 
+                    SUM(IF(TREE.DIA>=5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_SAPL, 
                     SUM(TREE.BASAL_AREA_STEM) AS TOTAL_BASAL_AREA,
-                    SUM(IF(TREE.DIA>=5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_TREE, 
-                    SUM(IF(TREE.DIA<5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_SAPL,
+                    SUM(IF(TREE.DIA>5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_TREE, 
+                    SUM(IF(TREE.DIA>=5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_SAPL,
                     MAX(TREE.HT) AS MAX_HT, 
                     AVG(TREE.HT) AS AVG_HT
             FROM TREE
