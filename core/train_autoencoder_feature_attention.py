@@ -26,6 +26,8 @@ def main():
         "TREE_COUNT",
         'MAX_HT',
         'BASAL_AREA_TREE',
+        'GINI_DIA',
+        'GINI_HT',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
