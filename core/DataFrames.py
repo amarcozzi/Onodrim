@@ -192,7 +192,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
         climate_variables_to_csv(FINAL.select(["SUBPLOT_ID", "LAT", "LON"]), state=state, resolution=climate_resolution)
 
     #uses climate_data.csv to add climate data to FINAL
-    FINAL = climate_variables_to_df(FINAL, state=state)
+    FINAL = climate_variables_to_df(FINAL, state=state, resolution=climate_resolution)
 
     # Drop NaN values
     FINAL = FINAL.drop_nulls()
@@ -260,9 +260,9 @@ def climate_variables_to_csv(plots, state, resolution="10m"):
     print("...Done")
 
 
-def climate_variables_to_df(df, state):
+def climate_variables_to_df(df, state, resolution="10m"):
     print(f"Assigning climate variables to given data frame: ")
-    csv_df = pl.read_csv(os.path.join(data_dir, f"climate_data_{state}.csv"), new_columns=bio_names)
+    csv_df = pl.read_csv(os.path.join(data_dir, f"climate_data_{state}_{resolution}.csv"), new_columns=bio_names)
     df = df.join(csv_df, on="SUBPLOT_ID", coalesce=True)
     return df
 

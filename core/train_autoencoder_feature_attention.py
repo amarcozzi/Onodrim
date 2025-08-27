@@ -4,19 +4,18 @@ train_autoencoder_attention.py
 Main script to train and evaluate the Attention Autoencoder.
 """
 import torch
-import polars as pl
 from DataFrames import create_polars_dataframe_by_subplot
 
 # Import shared modules
 from utils import prepare_data, create_output_directories
-from models import AttentionAutoencoder
+from models import AttentionAutoencoder, FeatureAttention
 from train import train_autoencoder
 from evaluation import run_evaluation
 
 
 def main():
     # --- Configuration for Attention Autoencoder ---
-    MODEL_NAME = 'attention_autoencoder'
+    MODEL_NAME = 'feature_attention_autoencoder'
     PLOT_ID_COL = 'SUBPLOTID'
 
     # --- Setup ---
@@ -64,16 +63,15 @@ def main():
 
     # Model and Training parameters
     latent_dim = 16
-    hidden_dims = [64]
+    hidden_dims = [len(feature_cols)]
     batch_size = 256
     learning_rate = 1e-4
-    num_epochs = 10000
-    dropout_rate = 0.2
-    use_attention = True
+    num_epochs = 500
+    dropout_rate = 0.1
 
     # --- Data Loading and Preparation ---
     print("Loading data...")
-    plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="5m")
+    plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
 
     print("Preparing data loaders...")
     train_loader, test_loader, scaler, X_test, y_test = prepare_data(
@@ -85,14 +83,14 @@ def main():
     input_dim = len(feature_cols)
     model = AttentionAutoencoder(
         input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims,
-        dropout_rate=dropout_rate, use_attention=use_attention
+        dropout_rate=dropout_rate, attention_module=FeatureAttention
     )
 
     # --- Training ---
     print("Starting training...")
     model, _, _ = train_autoencoder(
         model, MODEL_NAME, train_loader, test_loader, feature_cols,
-        feature_weights=feature_weights, learning_rate=learning_rate, num_epochs=num_epochs, patience=2500
+        feature_weights=feature_weights, learning_rate=learning_rate, num_epochs=num_epochs, patience=100
     )
 
     # --- Evaluation and Visualization ---
