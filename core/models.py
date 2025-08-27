@@ -85,34 +85,11 @@ class ResidualAutoencoder(nn.Module):
         return self.encoder(x)
 
 
-# class SelfAttention(nn.Module):
-#     """Self-attention layer for tabular data."""
-#     def __init__(self, input_dim, attention_dim=None):
-#         super(SelfAttention, self).__init__()
-#         if attention_dim is None:
-#             attention_dim = input_dim // 2
-#         self.query = nn.Linear(input_dim, attention_dim)
-#         self.key = nn.Linear(input_dim, attention_dim)
-#         self.value = nn.Linear(input_dim, input_dim)
-#         self.scale = torch.sqrt(torch.FloatTensor([attention_dim]))
-#
-#     def forward(self, x):
-#         x_reshaped = x.unsqueeze(1)
-#         q = self.query(x_reshaped)
-#         k = self.key(x_reshaped)
-#         v = self.value(x_reshaped)
-#         attention = torch.matmul(q, k.transpose(-2, -1)) / self.scale
-#         attention_weights = torch.softmax(attention, dim=-1)
-#         context = torch.matmul(attention_weights, v)
-#         output = context.squeeze(1)
-#         return output + x
-
-
-class SelfAttention(nn.Module):
+class GatedAttention(nn.Module):
     """Feature-wise self-attention for tabular data."""
 
     def __init__(self, input_dim, attention_dim=None):
-        super(SelfAttention, self).__init__()
+        super(GatedAttention, self).__init__()
         if attention_dim is None:
             attention_dim = max(input_dim // 4, 8)
 
@@ -144,41 +121,44 @@ class SelfAttention(nn.Module):
 
 
 class FeatureAttention(nn.Module):
-    """Self-attention layer for tabular data features."""
+    """
+    Self-attention layer for tabular data features, treating each feature as an element in a sequence.
+    This is a classic Key-Query-Value implementation.
+    """
 
     def __init__(self, num_features, attention_dim=None):
         super(FeatureAttention, self).__init__()
         self.num_features = num_features
         if attention_dim is None:
-            # A good heuristic for attention dimension
-            attention_dim = num_features // 4 if num_features > 4 else 1
+            attention_dim = max(num_features // 4, 1)
 
-        # Each feature is treated as an item in the sequence.
-        # The "embedding" of each feature is its scalar value, so input_dim is 1.
+        # Each feature is an item in the sequence. The "embedding" of each feature
+        # is its scalar value, so the input dimension to these linear layers is 1.
         self.query = nn.Linear(1, attention_dim)
         self.key = nn.Linear(1, attention_dim)
-        self.value = nn.Linear(1, 1)  # Output can be a single re-weighted value
+        self.value = nn.Linear(1, 1)
         self.scale = torch.sqrt(torch.FloatTensor([attention_dim]))
 
     def forward(self, x):
         # Input x has shape: (batch_size, num_features)
 
         # Reshape to (batch_size, num_features, 1) to treat features as a sequence
+        # where each feature has an "embedding" of size 1.
         x_reshaped = x.unsqueeze(-1)
 
-        # Q, K, V will have shape (batch_size, num_features, attention_dim)
+        # Q, K have shape (batch_size, num_features, attention_dim)
         q = self.query(x_reshaped)
         k = self.key(x_reshaped)
 
-        # V will have shape (batch_size, num_features, 1)
+        # V has shape (batch_size, num_features, 1)
         v = self.value(x_reshaped)
 
         # Attention scores will have shape (batch_size, num_features, num_features)
-        # This is the matrix of feature-to-feature relationships!
-        attention = torch.matmul(q, k.transpose(-2, -1)) / self.scale
-        attention_weights = torch.softmax(attention, dim=-1)
+        # This is the matrix of feature-to-feature relationships.
+        attention_scores = torch.matmul(q, k.transpose(-2, -1)) / self.scale.to(x.device)
+        attention_weights = torch.softmax(attention_scores, dim=-1)
 
-        # Context will have shape (batch_size, num_features, 1)
+        # Context vector will have shape (batch_size, num_features, 1)
         context = torch.matmul(attention_weights, v)
 
         # Reshape back to (batch_size, num_features) and add residual connection
@@ -186,26 +166,62 @@ class FeatureAttention(nn.Module):
         return output + x
 
 
+class PyTorchMultiheadAttention(nn.Module):
+    """
+    A wrapper for torch.nn.MultiheadAttention to make it compatible with tabular data
+    in the shape (batch_size, num_features).
+    """
+
+    def __init__(self, num_features, num_heads=1):
+        super(PyTorchMultiheadAttention, self).__init__()
+        # For tabular data, we treat each feature as a token in a sequence.
+        # The simplest embedding for a single feature's value is a dimension of 1.
+        self.embed_dim = 1
+        self.num_features = num_features
+        self.multihead_attn = nn.MultiheadAttention(embed_dim=self.embed_dim, num_heads=num_heads, batch_first=False)
+
+    def forward(self, x):
+        # Input x shape: (batch_size, num_features)
+
+        # We need to reshape the input to what MultiheadAttention expects: (seq_len, batch_size, embed_dim).
+        # Here, seq_len is num_features and embed_dim is 1.
+        # 1. Add a dimension for the embedding: (batch_size, num_features, 1)
+        x_reshaped = x.unsqueeze(-1)
+        # 2. Permute to (num_features, batch_size, 1)
+        x_permuted = x_reshaped.permute(1, 0, 2)
+
+        # Apply attention
+        attn_output, _ = self.multihead_attn(x_permuted, x_permuted, x_permuted)
+
+        # Reshape back to the original format
+        # 1. Permute back to (batch_size, num_features, 1)
+        output_permuted = attn_output.permute(1, 0, 2)
+        # 2. Squeeze the last dimension: (batch_size, num_features)
+        output = output_permuted.squeeze(-1)
+
+        # Add residual connection
+        return output + x
+
+
 class AttentionAutoencoder(nn.Module):
     """An autoencoder with attention followed by residual blocks."""
 
-    def __init__(self, input_dim, latent_dim=64, hidden_dims=(128, 96), dropout_rate=0.2, use_attention=True):
+    def __init__(self, input_dim, latent_dim=64, hidden_dims=(128, 96), dropout_rate=0.2, attention_module=None):
         super(AttentionAutoencoder, self).__init__()
 
         # --- ENCODER ---
         encoder_layers = []
         prev_dim = input_dim
         for dim in hidden_dims:
-            # 1. First, apply attention to the current feature set
-            if use_attention:
+            # 1. Apply attention to the current feature set
+            if attention_module:
                 # The attention layer maintains the dimension (prev_dim -> prev_dim)
-                encoder_layers.append(SelfAttention(prev_dim))
+                encoder_layers.append(attention_module(prev_dim))
 
-                # 2. Then, process the attended features with a Residual Block
+            # 2. Process the attended features with a Residual Block
             # The Residual Block handles the dimension change (prev_dim -> dim)
             encoder_layers.append(ResidualBlock(prev_dim, dim))
             encoder_layers.append(nn.Dropout(dropout_rate))
-
             prev_dim = dim
 
         encoder_layers.append(nn.Linear(prev_dim, latent_dim))
@@ -215,17 +231,15 @@ class AttentionAutoencoder(nn.Module):
         decoder_layers = []
         prev_dim = latent_dim
         for dim in reversed(hidden_dims):
-            # 1. In the decoder, we first process to get to the right dimension
-            # The Residual Block handles the dimension change (prev_dim -> dim)
+            # 1. The Residual Block handles the dimension change (prev_dim -> dim)
             decoder_layers.append(ResidualBlock(prev_dim, dim))
 
-            # 2. Then, apply attention to the processed features
-            if use_attention:
+            # 2. Apply attention to the processed features
+            if attention_module:
                 # The attention layer maintains the dimension (dim -> dim)
-                decoder_layers.append(SelfAttention(dim))
+                decoder_layers.append(attention_module(dim))
 
             decoder_layers.append(nn.Dropout(dropout_rate))
-
             prev_dim = dim
 
         decoder_layers.append(nn.Linear(prev_dim, input_dim))
