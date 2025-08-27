@@ -81,6 +81,67 @@ bio_names = ["SUBPLOT_ID",              #CSV HAS SUBPLOT_ID
              ]
 clim_dir = os.path.join(data_dir, "climatic")
 
+def calculate_gini_coefficient(values: np.ndarray) -> float:
+    """
+    Calculate Gini coefficient for a set of values using the provided formula.
+
+    Args:
+        values: Array of observed values (e.g., diameters or heights)
+
+    Returns:
+        Gini coefficient (0 = perfect equality, 1 = maximum inequality)
+    """
+    if len(values) == 0:
+        return 0.0
+
+    # Remove any NaN values
+    values = values[~np.isnan(values)]
+
+    if len(values) == 0:
+        return 0.0
+
+    # Sort values in ascending order
+    sorted_values = np.sort(values)
+    n = len(sorted_values)
+
+    # Calculate the numerator: Σ(2i - n - 1)x_i where i is rank (1 to n)
+    ranks = np.arange(1, n + 1)  # i from 1 to n
+    numerator = np.sum((2 * ranks - n - 1) * sorted_values)
+
+    # Calculate the denominator: n * Σx_i
+    denominator = n * np.sum(sorted_values)
+
+    if denominator == 0:
+        return 0.0
+
+    return numerator / denominator
+
+def weighted_gini(values, weights):
+    x = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float)
+
+    # keep only finite, positive-weight entries
+    m = np.isfinite(x) & np.isfinite(w) & (w > 0)
+    x, w = x[m], w[m]
+    if x.size == 0:
+        return 0.0
+
+    # sort by value (stable so equal heights keep order)
+    idx = np.argsort(x, kind="mergesort")
+    x, w = x[idx], w[idx]
+
+    W = w.sum()
+    wx = w * x
+    mu = wx.sum() / W if W > 0 else 0.0
+    if W <= 0 or mu == 0:
+        return 0.0
+
+    cw = np.cumsum(w)  # cumulative weights
+    # Numerator generalizes the unweighted sum((2i-n-1)*x_i)
+    num = np.sum((2.0 * cw - W - w) * wx)
+    den = W * wx.sum()                     # = W * sum(w_i * x_i)
+    return num / den
+
 def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     print("Creating Polars DataFrame")
 
@@ -116,7 +177,6 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     TREE = TREE.with_columns([
         (np.square(pl.col("DIA")) * 0.005454).alias("BASAL_AREA_STEM")
     ])
-
     # group trees by plot cn AND by subplot
     # In MT_CSV, ACTUALHT is generally empty or the same as HT
     # This SQL query is done this way for readability and future potential adjustments
@@ -124,9 +184,9 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
         query='''
             SELECT TREE.PLT_CN, TREE.SUBP, 
                     COUNT(TREE.CN) AS STEM_COUNT,
-                    SUM(IF(TREE.DIA>=5.0,1,0)) AS TREE_COUNT,
+                    SUM(IF(TREE.DIA >= 5.0, 1, 0) * TREE.TPA_UNADJ * 4.0) AS TREE_COUNT,
                     SUM(IF(TREE.DIA<5.0,1,0)) AS SAPL_COUNT, 
-                    SUM(IF(TREE.DIA>=5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_TREE, 
+                    SUM(IF(TREE.DIA>=5.0,TREE.BASAL_AREA_STEM/12.0,0) * TREE.TPA_UNADJ * 4.0) AS BASAL_AREA_TREE, 
                     SUM(IF(TREE.DIA<5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_SAPL, 
                     SUM(TREE.BASAL_AREA_STEM) AS TOTAL_BASAL_AREA,
                     SUM(IF(TREE.DIA>=5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_TREE, 
@@ -167,6 +227,61 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     TREEGRP = TREEGRP.with_columns([
         np.sqrt(pl.col("DIA_SQR_TREE") / (pl.col("TREE_COUNT"))).alias("QMD_TREE")
     ])
+    print(TREEGRP)
+
+    # Add SUBPLOTID to TREE DF to maintain consistency in grouping
+    TREE = TREE.with_columns(
+        pl.concat_str(
+            [pl.col("PLT_CN").cast(pl.Utf8), pl.col("SUBP").cast(pl.Utf8)],
+            separator=""
+        ).alias("SUBPLOTID")
+    )
+
+    # GINI COEF DIA
+    # Create dataframe where SUBPLOTID -> list of DIA, list of TPA
+    dia_grp = (
+        TREE.filter(pl.col("STATUSCD") == 1)
+            .group_by("SUBPLOTID")
+            .agg(
+                pl.col("DIA").cast(pl.Float64).drop_nulls().alias("DIA_list"),
+                pl.col("TPA_UNADJ").cast(pl.Float64).drop_nulls().alias("DIA_W_list")
+            )
+    )
+
+    # Compute weighted Gini per SUBPLOTID by looping over groups
+    dia_gini_results = {
+        r["SUBPLOTID"]: weighted_gini(r["DIA_list"], r["DIA_W_list"])
+        for r in dia_grp.iter_rows(named=True)
+    }
+
+    # Back to Polars and join into TREEGRP
+    GINI_DIA = pl.DataFrame(
+        {"SUBPLOTID": list(dia_gini_results.keys()), "GINI_DIA": list(dia_gini_results.values())}
+    )
+    TREEGRP = TREEGRP.join(GINI_DIA, on="SUBPLOTID", how="left")
+
+    # GINI COEF HEIGHT
+    # Create dataframe where SUBPLOTID -> list of HT, list of TPA
+    ht_grp = (
+        TREE.filter(pl.col("STATUSCD") == 1)
+            .group_by("SUBPLOTID")
+            .agg(
+                pl.col("HT").cast(pl.Float64).drop_nulls().alias("HT_list"),
+                pl.col("TPA_UNADJ").cast(pl.Float64).drop_nulls().alias("HT_W_list")
+            )
+    )
+
+    # Compute weighted Gini per SUBPLOTID by looping over groups
+    ht_gini_results = {
+        r["SUBPLOTID"]: weighted_gini(r["HT_list"], r["HT_W_list"])
+        for r in ht_grp.iter_rows(named=True)
+    }
+
+    # Back to Polars and join into TREEGRP
+    GINI_HT = pl.DataFrame(
+        {"SUBPLOTID": list(ht_gini_results.keys()), "GINI_HT": list(ht_gini_results.values())}
+    )
+    TREEGRP = TREEGRP.join(GINI_HT, on="SUBPLOTID", how="left")
     print(TREEGRP)
 
     #join out PLOT, SUBP, and COND tables together

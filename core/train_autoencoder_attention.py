@@ -27,6 +27,8 @@ def main():
         "TREE_COUNT",
         'MAX_HT',
         'BASAL_AREA_TREE',
+        'GINI_DIA',
+        'GINI_HT',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
@@ -67,13 +69,13 @@ def main():
     hidden_dims = [64]
     batch_size = 256
     learning_rate = 1e-4
-    num_epochs = 10000
+    num_epochs = 2000 #10000
     dropout_rate = 0.2
     use_attention = True
 
     # --- Data Loading and Preparation ---
     print("Loading data...")
-    plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="5m")
+    plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
 
     print("Preparing data loaders...")
     train_loader, test_loader, scaler, X_test, y_test = prepare_data(
