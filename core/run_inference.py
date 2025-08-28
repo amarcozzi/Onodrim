@@ -212,8 +212,8 @@ def main():
         # all_features[:, :, 3:5] = tile_array[:, :, 3:5] # Gini dia and gini ht (they are in same order)
 
         # Add elev
-        all_features[:, :, 3] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
-        # all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
+        all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 5] = all_features[:, :, 5] * 3.28084  # Convert elev from meters to feet
 
         # Add slope
         all_features[:, :, 4] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
