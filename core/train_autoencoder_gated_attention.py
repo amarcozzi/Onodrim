@@ -106,6 +106,14 @@ def main():
         'model_state_dict': model.state_dict(),
         'scaler': scaler,
         'feature_cols': feature_cols,
+        'latent_dim': latent_dim,
+        'hidden_dims': hidden_dims,
+        'dropout_rate': dropout_rate,
+        'attention_module': 'GatedAttention',
+        'model_name': MODEL_NAME,
+        'batch_size': batch_size,
+        'learning_rate': learning_rate,
+        'num_epochs': num_epochs,
         'evaluation_metrics': evaluation_metrics
     }, save_path)
     print(f"Model and scaler saved to {save_path}")
