@@ -8,6 +8,7 @@ import sqlite3
 import polars as pl
 from rasterio.errors import RasterioIOError
 from scipy.stats import mode
+import matplotlib.pyplot as plt
 
 from models import AttentionAutoencoder, GatedAttention
 from DataFrames import create_polars_dataframe_by_subplot
@@ -16,7 +17,7 @@ import database as db
 
 LATENT_MAP_PATH = Path("./inference/output")
 OUTPUT_PATH = Path("./inference/variable-maps")
-WEIGHT_PATH = Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt")
+WEIGHT_PATH = Path("./weights/gated_attention_autoencoder.pt")
 
 PLOT_ID_COL = 'SUBPLOTID'
 
@@ -77,7 +78,7 @@ def main():
     scaler = checkpoint['scaler']
     # Make dataframe of all FIA plots
     plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
-
+    
     # Get encoded version of this
     ALL_PLOT = plot_data.select(feature_cols).to_numpy()
     ALL_PLOT = np.nan_to_num(ALL_PLOT, nan=0.0)

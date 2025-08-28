@@ -4,7 +4,7 @@ from DataFrames import create_polars_dataframe_by_subplot
 
 # Import shared modules
 from utils import prepare_data, create_output_directories
-from models import AttentionAutoencoder
+from models import AttentionAutoencoder, GatedAttention
 from train import train_autoencoder
 from evaluation import run_evaluation
 
@@ -23,7 +23,10 @@ from rasterio.enums import Resampling
 from scipy.interpolate import interpn
 import xarray
 
-WEIGHT_PATH = Path("./weights/BATCH1024attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+import matplotlib.pyplot as plt
+
+
+WEIGHT_PATH = Path("./weights/gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
 INPUT_PATH = Path("./inference/input")
 OUTPUT_PATH = Path("./inference/output")
 
@@ -65,11 +68,18 @@ def sanitize_layers(all_features, layer_indices, nodata_threshold=-1000, clip_mi
         layer[layer < nodata_threshold] = 0.0
 
         # Replace NaNs or infs
-        layer = np.nan_to_num(layer, nan=0.0, posinf=clip_max, neginf=clip_min)
+        layer = np.nan_to_num(layer, nan=0.0)
 
         # Put back into all_features
         all_features[:, :, i] = layer
     return all_features
+
+def clip_negs(all_features, layer_indices):
+    for i in layer_indices:
+        layer = all_features[:, :, i]
+        layer = np.nan_to_num(layer) # Replace nans with 0
+        layer[layer < 0] = 0.0 # Clip to 0
+        all_features[:, :, i] = layer
 
 def main():
     # Check paths
@@ -90,8 +100,8 @@ def main():
         "TREE_COUNT",
         'MAX_HT',
         'BASAL_AREA_TREE',
-        'GINI_DIA',
-        'GINI_HT',
+        # 'GINI_DIA',
+        # 'GINI_HT',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
@@ -121,18 +131,17 @@ def main():
 
     # Model and Training parameters
     latent_dim = 16
-    hidden_dims = [64]
-    batch_size = 1024 #256
+    hidden_dims = [len(feature_cols)]
+    batch_size = 256
     learning_rate = 1e-4
-    num_epochs = 10000
-    dropout_rate = 0.2
-    use_attention = True
+    num_epochs = 500
+    dropout_rate = 0.1
 
     # Load model
     input_dim = len(feature_cols)
     model = AttentionAutoencoder(
         input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims,
-        dropout_rate=dropout_rate, use_attention=use_attention
+        dropout_rate=dropout_rate, attention_module=GatedAttention
     )
 
     # Find device
@@ -192,19 +201,22 @@ def main():
         # Convert tree count from tree count per pixel to count per acre
         tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86
 
+        # Clip all to 0
+        clip_negs(tile_array, [0, 1, 2])
+
         # Add features from UNET output
         all_features[:, :, 0] = tile_array[:, :, 2] # Tree count
         all_features[:, :, 1] = tile_array[:, :, 1] # Max height
         all_features[:, :, 2] = tile_array[:, :, 0] # Basal area
         
-        all_features[:, :, 3:5] = tile_array[:, :, 3:5] # Gini dia and gini ht (they are in same order)
+        # all_features[:, :, 3:5] = tile_array[:, :, 3:5] # Gini dia and gini ht (they are in same order)
 
         # Add elev
-        all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 3] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
         # all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
 
         # Add slope
-        all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 4] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
         # all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
 
         
@@ -215,8 +227,8 @@ def main():
         aspect_rad = np.deg2rad(aspect_raw)
         aspect_cos = np.cos(aspect_rad)
         aspect_sin = np.sin(aspect_rad)
-        all_features[:, :, 7] = aspect_cos
-        all_features[:, :, 8] = aspect_sin
+        all_features[:, :, 5] = aspect_cos
+        all_features[:, :, 6] = aspect_sin
 
         # Add lat and lon
         # Get lat lon arrays and add to feature array
@@ -233,34 +245,57 @@ def main():
         transformer = Transformer.from_crs(tile_ds.crs, "EPSG:4326", always_xy=True)
         lons, lats = transformer.transform(xs, ys)
 
-        all_features[:, :, 9] = lons
-        all_features[:, :, 10] = lats
+        all_features[:, :, 7] = lats
+        all_features[:, :, 8] = lons
 
         # Add all climatic variables
-        all_features[:, :, 11] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_1.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 12] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_2.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 13] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_3.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 14] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_4.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 15] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_5.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 16] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_6.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 17] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_7.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 18] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_8.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 19] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_9.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 20] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_10.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 21] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_11.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 22] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_12.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 23] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_13.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 24] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_14.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 25] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_15.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 26] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_16.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 27] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_17.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 9] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_1.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 10] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_2.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 11] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_3.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 12] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_4.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 13] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_5.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 14] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_6.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 15] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_7.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 16] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_8.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 17] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_9.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 18] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_10.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 19] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_11.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 20] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_12.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 21] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_13.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 22] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_14.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 23] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_15.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 24] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_16.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 25] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_17.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 26] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 27] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
         # all_features[:, :, 17] = 0
-        all_features = sanitize_layers(all_features, range(0, 30))
+        all_features = sanitize_layers(all_features, range(0, 28))
 
-        print("all features shape: ", all_features.shape)
+        # Create FIA plot DB for histograms
+        
+        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # plot_data_features = plot_data[feature_cols]
+        # num_bins = 100
+        # print(f"FOR TILE {file_name}")
+        # for i, feature in enumerate(plot_data_features.columns):
+        #     print(f"Making plot for {feature}")
+        #     values_fia = plot_data_features[feature].to_numpy()
+        #     values_tile = all_features[:, :, i].flatten()
+        #     plt.figure(figsize=(6, 4))
+        #     xmin = min(values_fia.min(), values_tile.min())
+        #     xmax = max(values_fia.max(), values_tile.max())
+        #     plt.hist(values_fia, bins=num_bins, histtype="step", density=False, color="green", label="FIA plots", range=(xmin, xmax))
+        #     plt.hist(values_tile, bins=num_bins, histtype="step", density=False, color="purple", label="Tile values", range=(xmin, xmax))
+        #     plt.title(f"Hist for FIA plt {feature}")
+        #     plt.xlabel(feature)
+        #     plt.ylabel("Frequency")
+        #     # plt.show()
+        #     plt.savefig(f"./inference/histograms/hist_{feature}_{file_name}.png", dpi=300, bbox_inches="tight")
+        #     plt.close()
+        # exit()
+
+        # print("all features shape: ", all_features.shape)
 
         # batch_patches = [] # Empty list for batches
         # batch_indices = [] # Empty list to store batch indices
