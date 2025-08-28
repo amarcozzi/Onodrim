@@ -21,42 +21,56 @@ from rasterio.transform import xy
 from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
 from scipy.interpolate import interpn
+import xarray
 
 WEIGHT_PATH = Path("./weights/BATCH1024attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
 INPUT_PATH = Path("./inference/input")
 OUTPUT_PATH = Path("./inference/output")
 
-CLIMATIC_PATH = Path("./data/climatic")
+CLIMATIC_PATH = Path("./data/climatic-interp-brd")
 LANDFIRE_PATH = Path("./data/landfire")
 
 CHUNK_SIZE = 64
 BATCH_SIZE = 8
 
-# See https://rasterio.readthedocs.io/en/latest/topics/virtual-warping.html
-# This basically allows you to sample from a raster with a different CRS and apply 
-# resampling like, in this case, bilinear interpolation.
 def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile_crs):
-    print(feature_path.stem)
-    with rasterio.open(feature_path) as feature_ds:
-        with WarpedVRT(feature_ds, resampling=Resampling.bilinear) as vrt:
-            rows, cols = np.meshgrid(np.arange(tile_height), np.arange(tile_width), indexing='ij')
+    print(f"Sampling from {feature_path}")
+    feature = rioxarray.open_rasterio(feature_path)
 
-            xs, ys = rasterio.transform.xy(tile_transform, rows, cols, offset='center')
+    rows, cols = np.meshgrid(np.arange(tile_height), np.arange(tile_width), indexing='ij')
+    xs, ys = rasterio.transform.xy(tile_transform, rows, cols, offset='center')
+    xs = np.array(xs, dtype=np.float32)
+    ys = np.array(ys, dtype=np.float32)
 
-            xs = np.array(xs, dtype=np.float32)
-            ys = np.array(ys, dtype=np.float32)
+    transformer = Transformer.from_crs(tile_crs, feature.rio.crs, always_xy=True)
+    xx_flat, yy_flat = transformer.transform(xs, ys)
 
-            transformer = Transformer.from_crs(tile_crs, feature_ds.crs, always_xy=True)
-            xx, yy = transformer.transform(xs, ys)
+    xx = xx_flat.reshape(tile_height, tile_width)
+    yy = yy_flat.reshape(tile_height, tile_width)
 
-            # Sample coords 
-            coords = np.column_stack([xx.ravel(), yy.ravel()])
-            sampled = np.array([v for v in vrt.sample(coords)])
+    xx_da = xarray.DataArray(xx, dims=("y","x"))
+    yy_da = xarray.DataArray(yy, dims=("y","x"))
 
-            # Reshape back to tile grid
-            sampled = sampled.reshape(tile_height, tile_width)
+    sampled = feature.interp(x=xx_da, y=yy_da, method="nearest")
 
-            return sampled
+    sampled_array = sampled.values.reshape(tile_height, tile_width)
+
+    return sampled_array
+
+def sanitize_layers(all_features, layer_indices, nodata_threshold=-1000, clip_min=-5, clip_max=5):
+    for i in layer_indices:
+        layer = all_features[:, :, i]
+
+        # Replace nodata
+        layer[layer < nodata_threshold] = 0.0
+
+        # Replace NaNs or infs
+        layer = np.nan_to_num(layer, nan=0.0, posinf=clip_max, neginf=clip_min)
+
+        # Put back into all_features
+        all_features[:, :, i] = layer
+    return all_features
+
 def main():
     # Check paths
     if not INPUT_PATH.exists():
@@ -147,6 +161,8 @@ def main():
         tile_width = tile_ds.width
         sq_m_per_pixel = tile_ds.transform[0] **2
 
+        print(f"tile height: {tile_height} tile width: {tile_width}")
+
         # Read in entire tile
         try:
             tile_array = tile_ds.read()
@@ -182,12 +198,17 @@ def main():
 
         # Add elev
         all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        # all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
 
         # Add slope
         all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        # all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
+
         
         # Add aspect
         aspect_raw = get_feature_tile(LANDFIRE_PATH / "LC20_Asp_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        # aspect_raw = get_feature_tile(LANDFIRE_PATH / "LC20_Asp_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
+
         aspect_rad = np.deg2rad(aspect_raw)
         aspect_cos = np.cos(aspect_rad)
         aspect_sin = np.sin(aspect_rad)
@@ -233,8 +254,11 @@ def main():
         all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
         all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
-        all_features[:, :, 11:30] = 0 # !!! REASSIGNING 0 AS TEST!!!!!
-        
+        # all_features[:, :, 17] = 0
+        all_features = sanitize_layers(all_features, range(0, 30))
+
+        print("all features shape: ", all_features.shape)
+
         # batch_patches = [] # Empty list for batches
         # batch_indices = [] # Empty list to store batch indices
         for y in range(0, tile_height, CHUNK_SIZE):
@@ -255,6 +279,7 @@ def main():
 
                 # Apply scaler
                 patch_scaled = scaler.transform(patch_reshaped)
+                print(patch_scaled)
 
                 # # Add to batch list
                 # batch_patches.append(patch_scaled)
@@ -279,12 +304,14 @@ def main():
 
                 # Create tensor and move to device
                 input_tensor = torch.from_numpy(patch_scaled.astype("float32"))#.unsqueeze(0)#.to(device)
+                # print(input_tensor)
 
                 with torch.no_grad():
                     latent = model.encoder(input_tensor)
 
                 # Reshape and move back to cpu
                 latent_patch = latent.cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
+                # print(latent_patch)
 
                 # Store in output array
                 output_array[y_start:y_start+CHUNK_SIZE, x_start:x_start+CHUNK_SIZE, :] = latent_patch
@@ -323,6 +350,7 @@ def main():
             transform=tile_transform
         ) as dst:
             dst.write(output_array)
+        # exit()
 
 if __name__ == "__main__":
     main()
