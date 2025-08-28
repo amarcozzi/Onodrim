@@ -9,7 +9,7 @@ import polars as pl
 from rasterio.errors import RasterioIOError
 from scipy.stats import mode
 
-from models import AttentionAutoencoder
+from models import AttentionAutoencoder, GatedAttention
 from DataFrames import create_polars_dataframe_by_subplot
 import database as db
 
@@ -41,65 +41,40 @@ def main():
         print(f"Weight path {WEIGHT_PATH} does not exist, exiting.")
         exit()
 
-    # Feature columns used by this model (including bioclimatic variables)
-    feature_cols = [
-        "TREE_COUNT",
-        'MAX_HT',
-        'BASAL_AREA_TREE',
-        'GINI_DIA',
-        'GINI_HT',
-        'ELEV',
-        'SLOPE',
-        'ASPECT_COS',
-        'ASPECT_SIN',
-        "LAT",
-        "LON",
-        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
-        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
-        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
-        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
-        "MAX_TEMP_WARM_MONTH",  # BIO5
-        "MIN_TEMP_COLD_MONTH",  # BIO6
-        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
-        "MEAN_TEMP_WET_QUARTER",  # BIO8
-        "MEAN_TEMP_DRY_QUARTER",  # BIO9
-        "MEAN_TEMP_WARM_QUARTER",  # BIO10
-        "MEAN_TEMP_COLD_QUARTER",  # BIO11
-        "ANNUAL_PRECIP",  # BIO12
-        "PRECIP_WET_MONTH",  # BIO13
-        "PRECIP_DRY_MONTH",  # BIO14
-        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
-        "PRECIP_WET_QUARTER",  # BIO16
-        "PRECIP_DRY_QUARTER",  # BIO17
-        "PRECIP_WARM_QUARTER",  # BIO18
-        "PRECIP_COLD_QUARTER"  # BIO19
-    ]
+    # Load checkpoint first to configure model from saved metadata
+    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
 
-    # Model and Training parameters
-    latent_dim = 16
-    hidden_dims = [64]
-    batch_size = 256
-    learning_rate = 1e-4
-    num_epochs = 10000
-    dropout_rate = 0.2
-    use_attention = True
+    # Feature columns used by this model (including bioclimatic variables)
+    feature_cols = checkpoint.get('feature_cols')
+
+    # Model and Training parameters (loaded from checkpoint when available)
+    latent_dim = checkpoint.get('latent_dim')
+    hidden_dims = checkpoint.get('hidden_dims')
+    dropout_rate = checkpoint.get('dropout_rate')
+    attention_module_name = checkpoint.get('attention_module')
+
+    # Resolve attention module class if specified in checkpoint
+    attention_modules = {
+        'GatedAttention': GatedAttention
+    }
+    attention_module_cls = attention_modules.get(attention_module_name, None)
 
     # Load model
     input_dim = len(feature_cols)
     model = AttentionAutoencoder(
-        input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims,
-        dropout_rate=dropout_rate, use_attention=use_attention
+        input_dim,
+        latent_dim=latent_dim,
+        hidden_dims=hidden_dims,
+        dropout_rate=dropout_rate,
+        attention_module=attention_module_cls
     )
 
-    # Load checkpoint
-    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
+    # Load model weights
     model.load_state_dict(checkpoint['model_state_dict'])
-    # model.to(device) # Move to GPU
     model.eval()
 
     # Load scaler
     scaler = checkpoint['scaler']
-
     # Make dataframe of all FIA plots
     plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
 
