@@ -184,10 +184,13 @@ def main():
         all_features = np.zeros((tile_height, tile_width, len(feature_cols)), dtype=np.float32)
 
         # Convert basal area from square feet per pixel to square feet per acre
-        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) / 4046.86
+        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) * 4046.86
+
+        # Convert max height from meters to feet
+        tile_array[:, :, 1] = tile_array[:, :, 1] * 3.28084
 
         # Convert tree count from tree count per pixel to count per acre
-        tile_array[:, :, 1] = (tile_array[:, :, 1] / sq_m_per_pixel) / 4046.86
+        tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86
 
         # Add features from UNET output
         all_features[:, :, 0] = tile_array[:, :, 2] # Tree count
