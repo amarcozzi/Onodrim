@@ -60,19 +60,19 @@ def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile
 
     return sampled_array
 
-def sanitize_layers(all_features, layer_indices, nodata_threshold=-1000, clip_min=-5, clip_max=5):
-    for i in layer_indices:
-        layer = all_features[:, :, i]
+# def sanitize_layers(all_features, layer_indices, nodata_threshold=-1000, clip_min=-5, clip_max=5):
+#     for i in layer_indices:
+#         layer = all_features[:, :, i]
 
-        # Replace nodata
-        layer[layer < nodata_threshold] = 0.0
+#         # Replace nodata
+#         layer[layer < nodata_threshold] = 0.0
 
-        # Replace NaNs or infs
-        layer = np.nan_to_num(layer, nan=0.0)
+#         # Replace NaNs or infs
+#         layer = np.nan_to_num(layer, nan=0.0)
 
-        # Put back into all_features
-        all_features[:, :, i] = layer
-    return all_features
+#         # Put back into all_features
+#         all_features[:, :, i] = layer
+#     return all_features
 
 def clip_negs(all_features, layer_indices):
     for i in layer_indices:
@@ -80,6 +80,7 @@ def clip_negs(all_features, layer_indices):
         layer = np.nan_to_num(layer) # Replace nans with 0
         layer[layer < 0] = 0.0 # Clip to 0
         all_features[:, :, i] = layer
+    return all_features
 
 def main():
     # Check paths
@@ -100,8 +101,8 @@ def main():
         "TREE_COUNT",
         'MAX_HT',
         'BASAL_AREA_TREE',
-        # 'GINI_DIA',
-        # 'GINI_HT',
+        'GINI_DIA',
+        'GINI_HT',
         'ELEV',
         'SLOPE',
         'ASPECT_COS',
@@ -202,33 +203,30 @@ def main():
         tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86
 
         # Clip all to 0
-        clip_negs(tile_array, [0, 1, 2])
+        tile_array = clip_negs(tile_array, [0, 1, 2])
 
         # Add features from UNET output
         all_features[:, :, 0] = tile_array[:, :, 2] # Tree count
         all_features[:, :, 1] = tile_array[:, :, 1] # Max height
         all_features[:, :, 2] = tile_array[:, :, 0] # Basal area
         
-        # all_features[:, :, 3:5] = tile_array[:, :, 3:5] # Gini dia and gini ht (they are in same order)
+        all_features[:, :, 3:5] = tile_array[:, :, 3:5] # Gini dia and gini ht (they are in same order)
 
         # Add elev
         all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
         all_features[:, :, 5] = all_features[:, :, 5] * 3.28084  # Convert elev from meters to feet
 
         # Add slope
-        all_features[:, :, 4] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
-        # all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
-
-        
+        all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+ 
         # Add aspect
         aspect_raw = get_feature_tile(LANDFIRE_PATH / "LC20_Asp_220.tif", tile_height, tile_width, tile_transform, tile_crs)
-        # aspect_raw = get_feature_tile(LANDFIRE_PATH / "LC20_Asp_220.tif", tile_height, tile_width, tile_bounds, tile_crs)
 
         aspect_rad = np.deg2rad(aspect_raw)
         aspect_cos = np.cos(aspect_rad)
         aspect_sin = np.sin(aspect_rad)
-        all_features[:, :, 5] = aspect_cos
-        all_features[:, :, 6] = aspect_sin
+        all_features[:, :, 7] = aspect_cos
+        all_features[:, :, 8] = aspect_sin
 
         # Add lat and lon
         # Get lat lon arrays and add to feature array
@@ -245,32 +243,32 @@ def main():
         transformer = Transformer.from_crs(tile_ds.crs, "EPSG:4326", always_xy=True)
         lons, lats = transformer.transform(xs, ys)
 
-        all_features[:, :, 7] = lats
-        all_features[:, :, 8] = lons
+        all_features[:, :, 9] = lats
+        all_features[:, :, 10] = lons
 
         # Add all climatic variables
-        all_features[:, :, 9] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_1.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 10] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_2.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 11] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_3.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 12] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_4.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 13] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_5.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 14] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_6.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 15] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_7.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 16] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_8.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 17] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_9.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 18] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_10.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 19] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_11.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 20] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_12.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 21] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_13.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 22] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_14.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 23] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_15.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 24] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_16.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 25] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_17.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 26] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
-        all_features[:, :, 27] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 11] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_1.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 12] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_2.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 13] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_3.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 14] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_4.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 15] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_5.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 16] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_6.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 17] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_7.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 18] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_8.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 19] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_9.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 20] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_10.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 21] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_11.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 22] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_12.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 23] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_13.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 24] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_14.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 25] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_15.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 26] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_16.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 27] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_17.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
         # all_features[:, :, 17] = 0
-        all_features = sanitize_layers(all_features, range(0, 28))
+        # all_features = sanitize_layers(all_features, range(0, 28))
 
         # Create FIA plot DB for histograms
         
@@ -297,8 +295,6 @@ def main():
 
         # print("all features shape: ", all_features.shape)
 
-        # batch_patches = [] # Empty list for batches
-        # batch_indices = [] # Empty list to store batch indices
         for y in range(0, tile_height, CHUNK_SIZE):
             for x in range(0, tile_width, CHUNK_SIZE):
                 # If we are on the edge, make starts be CHUNK_SIZE from edge
@@ -319,27 +315,6 @@ def main():
                 patch_scaled = scaler.transform(patch_reshaped)
                 print(patch_scaled)
 
-                # # Add to batch list
-                # batch_patches.append(patch_scaled)
-                # batch_indices.append((y_start, x_start))
-
-                # if len(batch_patches) == BATCH_SIZE:
-                #     # Stack into tensor
-                #     input_tensor = torch.from_numpy(np.stack(batch_patches).astype("float32"))
-
-                #     # Move to device here if that needs to happen
-
-                #     with torch.no_grad():
-                #         latent_batch = model.encoder(input_tensor)
-
-                #     # Add to output array
-                #     for i, (y0, x0) in enumerate(batch_indices):
-                #         latent_patch = latent_batch[i].cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
-                #         output_array[y0:y0+CHUNK_SIZE, x0:x0+CHUNK_SIZE, :] = latent_patch
-                    
-                #     batch_patches = [] # Empty
-                #     batch_indices = [] # Empty
-
                 # Create tensor and move to device
                 input_tensor = torch.from_numpy(patch_scaled.astype("float32"))#.unsqueeze(0)#.to(device)
                 # print(input_tensor)
@@ -353,24 +328,6 @@ def main():
 
                 # Store in output array
                 output_array[y_start:y_start+CHUNK_SIZE, x_start:x_start+CHUNK_SIZE, :] = latent_patch
-        
-        # # Run any remaining batches
-        # if batch_patches:
-        #     # Stack into tensor
-        #     input_tensor = torch.from_numpy(np.stack(batch_patches).astype("float32"))
-
-        #     # Move to device here if that needs to happen
-
-        #     with torch.no_grad():
-        #         latent_batch = model.encoder(input_tensor)
-
-        #     # Add to output array
-        #     for i, (y0, x0) in enumerate(batch_indices):
-        #         latent_patch = latent_batch[i].cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
-        #         output_array[y0:y0+CHUNK_SIZE, x0:x0+CHUNK_SIZE, :] = latent_patch
-            
-        #     batch_patches = [] # Empty
-        #     batch_indices = [] # Empty
 
         # Transpose back
         output_array = np.transpose(output_array, (2, 0, 1))
