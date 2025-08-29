@@ -3,7 +3,7 @@ import polars as pl
 from DataFrames import create_polars_dataframe_by_subplot
 
 # Import shared modules
-from utils import prepare_data, create_output_directories
+from dataloader import prepare_data, create_output_directories
 from models import AttentionAutoencoder, GatedAttention
 from train import train_autoencoder
 from evaluation import run_evaluation
@@ -26,12 +26,12 @@ import xarray
 import matplotlib.pyplot as plt
 
 
-WEIGHT_PATH = Path("./weights/gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
-INPUT_PATH = Path("./inference/input")
-OUTPUT_PATH = Path("./inference/output")
+WEIGHT_PATH = Path("weights/gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+INPUT_PATH = Path("inference/input")
+OUTPUT_PATH = Path("inference/output")
 
-CLIMATIC_PATH = Path("./data/climatic-interp-brd")
-LANDFIRE_PATH = Path("./data/landfire")
+CLIMATIC_PATH = Path("data/climatic-interp")
+LANDFIRE_PATH = Path("data/landfire")
 
 CHUNK_SIZE = 64
 BATCH_SIZE = 8
@@ -96,66 +96,34 @@ def main():
 
     print(f"Chunk size: {CHUNK_SIZE} Batch size: {BATCH_SIZE}")
 
-    # Feature columns used by this model (including bioclimatic variables)
-    feature_cols = [
-        "TREE_COUNT",
-        'MAX_HT',
-        'BASAL_AREA_TREE',
-        'GINI_DIA',
-        'GINI_HT',
-        'ELEV',
-        'SLOPE',
-        'ASPECT_COS',
-        'ASPECT_SIN',
-        "LAT",
-        "LON",
-        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
-        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
-        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
-        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
-        "MAX_TEMP_WARM_MONTH",  # BIO5
-        "MIN_TEMP_COLD_MONTH",  # BIO6
-        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
-        "MEAN_TEMP_WET_QUARTER",  # BIO8
-        "MEAN_TEMP_DRY_QUARTER",  # BIO9
-        "MEAN_TEMP_WARM_QUARTER",  # BIO10
-        "MEAN_TEMP_COLD_QUARTER",  # BIO11
-        "ANNUAL_PRECIP",  # BIO12
-        "PRECIP_WET_MONTH",  # BIO13
-        "PRECIP_DRY_MONTH",  # BIO14
-        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
-        "PRECIP_WET_QUARTER",  # BIO16
-        "PRECIP_DRY_QUARTER",  # BIO17
-        "PRECIP_WARM_QUARTER",  # BIO18
-        "PRECIP_COLD_QUARTER"  # BIO19
-    ]
+    # Load checkpoint first to configure model from saved metadata
+    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
 
-    # Model and Training parameters
-    latent_dim = 16
-    hidden_dims = [len(feature_cols)]
-    batch_size = 256
-    learning_rate = 1e-4
-    num_epochs = 500
-    dropout_rate = 0.1
+    # Feature columns used by this model (including bioclimatic variables)
+    feature_cols = checkpoint.get('feature_cols')
+
+    # Model and Training parameters (loaded from checkpoint when available)
+    latent_dim = checkpoint.get('latent_dim')
+    hidden_dims = checkpoint.get('hidden_dims')
+    dropout_rate = checkpoint.get('dropout_rate')
+    attention_module_name = checkpoint.get('attention_module')
+    scaler = checkpoint['scaler']
+
+    # Resolve attention module class if specified in checkpoint
+    attention_modules = {
+        'GatedAttention': GatedAttention
+    }
+    attention_module_cls = attention_modules.get(attention_module_name, None)
 
     # Load model
     input_dim = len(feature_cols)
     model = AttentionAutoencoder(
-        input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims,
-        dropout_rate=dropout_rate, attention_module=GatedAttention
+        input_dim,
+        latent_dim=latent_dim,
+        hidden_dims=hidden_dims,
+        dropout_rate=dropout_rate,
+        attention_module=attention_module_cls
     )
-
-    # Find device
-    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
-    # Load checkpoint
-    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    # model.to(device) # Move to GPU
-    model.eval()
-
-    # Load scaler
-    scaler = checkpoint['scaler']
 
     # Loop through all tiles in input directory
     tiles = list(INPUT_PATH.glob("*.tif"))
@@ -193,8 +161,9 @@ def main():
         # Preallocate array for arrays
         all_features = np.zeros((tile_height, tile_width, len(feature_cols)), dtype=np.float32)
 
-        # Convert basal area from square feet per pixel to square feet per acre
-        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) * 4046.86
+        # Convert basal area from square meters per pixel to square feet per acre
+        tile_array[:, :, 0] *= 10.7639  # Convert basal area from square meters to square feet
+        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) * 4046.86  # sq ft per acre
 
         # Convert max height from meters to feet
         tile_array[:, :, 1] = tile_array[:, :, 1] * 3.28084
