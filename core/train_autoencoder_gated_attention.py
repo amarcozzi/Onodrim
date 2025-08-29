@@ -1,15 +1,15 @@
 """
-train_autoencoder_attention.py
+train_autoencoder_gated_attention.py
 
-Main script to train and evaluate the Attention Autoencoder.
+Main script to train and evaluate the autoencoder model with a gated attention mechanism.
 """
 import torch
 from DataFrames import create_polars_dataframe_by_subplot
 
 # Import shared modules
-from utils import prepare_data, create_output_directories
+from dataloader import prepare_data, create_output_directories
 from models import AttentionAutoencoder, GatedAttention
-from train import train_autoencoder
+from train_denoise import train_autoencoder
 from evaluation import run_evaluation
 
 
@@ -56,7 +56,7 @@ def main():
     ]
 
     # Define continuous and categorical metrics for evaluation
-    key_metrics_con = ['BASAL_AREA_TREE', 'MAX_HT', 'AVG_HT', "TREE_COUNT"]
+    key_metrics_con = ['BASAL_AREA_TREE', 'MAX_HT', "TREE_COUNT", "GINI_DIA", "GINI_HT"]
     key_metrics_cat = ['FORTYPCD']
 
     # Custom feature weights
@@ -65,11 +65,11 @@ def main():
 
     # Model and Training parameters
     latent_dim = 16
-    hidden_dims = [len(feature_cols)]
+    hidden_dims = [64]
     batch_size = 256
-    learning_rate = 1e-4
-    num_epochs = 500
-    dropout_rate = 0.1
+    learning_rate = 5e-5
+    num_epochs = 1000
+    dropout_rate = 0.2
 
     # --- Data Loading and Preparation ---
     print("Loading data...")

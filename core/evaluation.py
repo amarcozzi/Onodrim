@@ -14,6 +14,8 @@ from visualization import (
     UNITS
 )
 
+MIN_DISTANCES = []
+
 def find_most_similar_plots(model, scaler, all_data, feature_cols, plot_id_col, test_features, test_ids, top_k=5):
     """Finds the most similar plots for each test sample."""
     model.eval()
@@ -38,8 +40,11 @@ def find_most_similar_plots(model, scaler, all_data, feature_cols, plot_id_col, 
             top_indices = np.argsort(valid_distances)[:top_k]
             results.append({
                 'true_plot_id': true_plot_id,
-                'top_k_plots': list(zip(valid_plot_ids[top_indices], valid_distances[top_indices]))
+                'top_k_plots': list(zip(valid_plot_ids[top_indices], valid_distances[top_indices])),
+                'distances': np.sort(valid_distances)[:top_k]
             })
+
+            MIN_DISTANCES.append(np.min(valid_distances))
     return results
 
 def evaluate_predictions(predictions_df, key_metrics_con, key_metrics_cat):
@@ -97,12 +102,13 @@ def run_evaluation(model, scaler, plot_data, feature_cols, plot_id_col, X_test, 
 
     # 1. Visualize Embeddings
     visualize_embeddings(model, scaler, plot_data, feature_cols,
-                         metrics_to_color=key_metrics_con + key_metrics_cat,
+                         metrics_to_color_con=key_metrics_con,
+                         metrics_to_color_cat=key_metrics_cat,
                          model_name=model_name)
 
     # 2. Find Similar Plots
     results = find_most_similar_plots(
-        model, scaler, plot_data, feature_cols, plot_id_col, X_test, y_test, top_k=5
+        model, scaler, plot_data, feature_cols, plot_id_col, X_test, y_test, top_k=1
     )
 
     # 3. Prepare a DataFrame for analysis
@@ -112,19 +118,29 @@ def run_evaluation(model, scaler, plot_data, feature_cols, plot_id_col, X_test, 
 
     for res in results:
         true_id = res['true_plot_id']
-        pred_id = res['top_k_plots'][0][0]
-        if true_id in plot_data_pd.index and pred_id in plot_data_pd.index:
-            pred_row = {'true_plot_id': true_id, 'predicted_plot_id': pred_id}
+        top_k_ids = [item[0] for item in res['top_k_plots']]
+        if true_id in plot_data_pd.index and all(pid in plot_data_pd.index for pid in top_k_ids):
+            pred_row = {'true_plot_id': true_id, 'predicted_plot_id': top_k_ids[0]}  # Keep first as reference
             for metric in all_metrics:
                 true_val = plot_data_pd.loc[true_id, metric]
-                pred_val = plot_data_pd.loc[pred_id, metric]
-                pred_row[f'true_{metric}'] = true_val
-                pred_row[f'pred_{metric}'] = pred_val
+
                 if metric in key_metrics_con:
+                    # For continuous variables, calculate mean across all top-k plots
+                    pred_vals = [plot_data_pd.loc[pid, metric] for pid in top_k_ids]
+                    pred_val = np.mean(pred_vals)
                     error = pred_val - true_val
+                    pred_row[f'true_{metric}'] = true_val
+                    pred_row[f'pred_{metric}'] = pred_val
                     pred_row[f'error_{metric}'] = error
                     pred_row[f'pct_error_{metric}'] = (error / true_val * 100) if true_val != 0 else 0
-            predictions.append(pred_row)
+                else:
+                    # For categorical variables, use mode (most common value)
+                    pred_vals = [plot_data_pd.loc[pid, metric] for pid in top_k_ids]
+                    pred_val = pd.Series(pred_vals).mode()[0]  # Get the most common value
+                    pred_row[f'true_{metric}'] = true_val
+                    pred_row[f'pred_{metric}'] = pred_val
+
+        predictions.append(pred_row)
 
     predictions_df = pd.DataFrame(predictions)
 
