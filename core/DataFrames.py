@@ -156,7 +156,6 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     PLOT = PLOT.rename({"CN": "PLT_CN"})
     PLOT = PLOT.sort("PLT_CN")
 
-
     SUBP = db.get_df_from_db(state, "SUBPLOT", subp_selected_columns)
     SUBP = SUBP.join(COND, on="PLT_CN", how="right", coalesce=True)
     SUBP = SUBP.drop_nulls()
@@ -175,7 +174,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
 
     #calculate the basal area of each stem recorded in the TREE table
     TREE = TREE.with_columns([
-        (np.square(pl.col("DIA")) * 0.005454).alias("BASAL_AREA_STEM")
+        (np.pi * np.square(pl.col("DIA") / 2) / 144).alias("BASAL_AREA_STEM")  # in ft^2
     ])
 
     # group trees by plot cn AND by subplot
@@ -187,8 +186,8 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
                     COUNT(TREE.CN) AS STEM_COUNT,
                     SUM(IF(TREE.DIA > 5.0, 1, 0) * TREE.TPA_UNADJ * 4.0) AS TREE_COUNT,
                     SUM(IF(TREE.DIA<=5.0,1,0)) AS SAPL_COUNT, 
-                    SUM(IF(TREE.DIA>5.0,TREE.BASAL_AREA_STEM/12.0,0) * TREE.TPA_UNADJ * 4.0) AS BASAL_AREA_TREE, 
-                    SUM(IF(TREE.DIA<=5.0,TREE.BASAL_AREA_STEM,0)) AS BASAL_AREA_SAPL, 
+                    SUM(IF(TREE.DIA>5.0, TREE.BASAL_AREA_STEM, 0) * TREE.TPA_UNADJ * 4.0) AS BASAL_AREA_TREE, 
+                    SUM(IF(TREE.DIA<=5.0,TREE.BASAL_AREA_STEM, 0)) AS BASAL_AREA_SAPL, 
                     SUM(TREE.BASAL_AREA_STEM) AS TOTAL_BASAL_AREA,
                     SUM(IF(TREE.DIA>5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_TREE, 
                     SUM(IF(TREE.DIA<=5.0,POW(TREE.DIA,2),0)) AS DIA_SQR_SAPL,

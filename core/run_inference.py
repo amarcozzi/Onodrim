@@ -3,8 +3,8 @@ import polars as pl
 from DataFrames import create_polars_dataframe_by_subplot
 
 # Import shared modules
-from utils import prepare_data, create_output_directories
-from models import AttentionAutoencoder
+from dataloader import prepare_data, create_output_directories
+from models import AttentionAutoencoder, GatedAttention
 from train import train_autoencoder
 from evaluation import run_evaluation
 
@@ -21,42 +21,86 @@ from rasterio.transform import xy
 from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
 from scipy.interpolate import interpn
+import xarray
 
-WEIGHT_PATH = Path("./weights/BATCH1024attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+from scipy.spatial import cKDTree
+
+
+import matplotlib.pyplot as plt
+
+
+WEIGHT_PATH = Path("./weights/NOISYgated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
 INPUT_PATH = Path("./inference/input")
 OUTPUT_PATH = Path("./inference/output")
 
-CLIMATIC_PATH = Path("./data/climatic")
-LANDFIRE_PATH = Path("./data/landfire")
+CLIMATIC_PATH = Path("data/climatic-interp")
+LANDFIRE_PATH = Path("data/landfire")
 
 CHUNK_SIZE = 64
 BATCH_SIZE = 8
+# x_vals should be predicted, y_vals should be UNET.
+def make_scatter(x_vals, y_vals, name, file_name):
 
-# See https://rasterio.readthedocs.io/en/latest/topics/virtual-warping.html
-# This basically allows you to sample from a raster with a different CRS and apply 
-# resampling like, in this case, bilinear interpolation.
+    unet_diff = y_vals - x_vals
+
+    min_val = min(x_vals.min(), y_vals.min())
+    max_val = max(x_vals.max(), y_vals.max())
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # regular scatter
+    axes[0].scatter(x_vals, y_vals, s=5, alpha=0.5)
+    axes[0].set_title(f"UNET vs {name} Predicted")
+    axes[0].set_xlabel(f"{name} prediction")
+    axes[0].set_ylabel("UNET prediction")
+    axes[0].set_xlim(min_val, max_val)
+    axes[0].set_ylim(min_val, max_val)
+    axes[0].plot([min_val, max_val], [min_val, max_val], "r--", linewidth=1) # line
+    axes[0].set_aspect("equal", adjustable="box")
+
+    # residuals
+    axes[1].scatter(x_vals, unet_diff, s=5, alpha=0.5, color="green")
+    axes[1].set_title(f"Residuals (UNET - {name} prediction)")
+    axes[1].set_xlabel(f"{name} prediction")
+    axes[1].set_ylabel("Residuals")
+    axes[1].axhline(0, color="red", linestyle="--", linewidth=1) # line at 0
+
+    plt.tight_layout()
+    plt.savefig(f"./inference/{name}_scatter_plots_{file_name}.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
 def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile_crs):
-    print(feature_path.stem)
-    with rasterio.open(feature_path) as feature_ds:
-        with WarpedVRT(feature_ds, resampling=Resampling.bilinear) as vrt:
-            rows, cols = np.meshgrid(np.arange(tile_height), np.arange(tile_width), indexing='ij')
+    print(f"Sampling from {feature_path}")
+    feature = rioxarray.open_rasterio(feature_path)
 
-            xs, ys = rasterio.transform.xy(tile_transform, rows, cols, offset='center')
+    rows, cols = np.meshgrid(np.arange(tile_height), np.arange(tile_width), indexing='ij')
+    xs, ys = rasterio.transform.xy(tile_transform, rows, cols, offset='center')
+    xs = np.array(xs, dtype=np.float32)
+    ys = np.array(ys, dtype=np.float32)
 
-            xs = np.array(xs, dtype=np.float32)
-            ys = np.array(ys, dtype=np.float32)
+    transformer = Transformer.from_crs(tile_crs, feature.rio.crs, always_xy=True)
+    xx_flat, yy_flat = transformer.transform(xs, ys)
 
-            transformer = Transformer.from_crs(tile_crs, feature_ds.crs, always_xy=True)
-            xx, yy = transformer.transform(xs, ys)
+    xx = xx_flat.reshape(tile_height, tile_width)
+    yy = yy_flat.reshape(tile_height, tile_width)
 
-            # Sample coords 
-            coords = np.column_stack([xx.ravel(), yy.ravel()])
-            sampled = np.array([v for v in vrt.sample(coords)])
+    xx_da = xarray.DataArray(xx, dims=("y","x"))
+    yy_da = xarray.DataArray(yy, dims=("y","x"))
 
-            # Reshape back to tile grid
-            sampled = sampled.reshape(tile_height, tile_width)
+    sampled = feature.interp(x=xx_da, y=yy_da, method="nearest")
 
-            return sampled
+    sampled_array = sampled.values.reshape(tile_height, tile_width)
+
+    return sampled_array
+
+def clip_negs(all_features, layer_indices):
+    for i in layer_indices:
+        layer = all_features[:, :, i]
+        layer = np.nan_to_num(layer) # Replace nans with 0
+        layer[layer < 0] = 0.0 # Clip to 0
+        all_features[:, :, i] = layer
+    return all_features
+
 def main():
     # Check paths
     if not INPUT_PATH.exists():
@@ -71,67 +115,34 @@ def main():
 
     print(f"Chunk size: {CHUNK_SIZE} Batch size: {BATCH_SIZE}")
 
-    # Feature columns used by this model (including bioclimatic variables)
-    feature_cols = [
-        "TREE_COUNT",
-        'MAX_HT',
-        'BASAL_AREA_TREE',
-        'GINI_DIA',
-        'GINI_HT',
-        'ELEV',
-        'SLOPE',
-        'ASPECT_COS',
-        'ASPECT_SIN',
-        "LAT",
-        "LON",
-        "MEAN_TEMP",  # BIO1   ANNUAL MEAN TEMP
-        "MEAN_DIURNAL_RANGE",  # BIO2   MEAN OF MONTHLY (MAX TEMP _ MIN TEMP)
-        "ISOTHERMALITY",  # BIO3   (BIO2/BIO7)*100
-        "TEMP_SEASONALITY",  # BIO4   (STD DEV * 100)
-        "MAX_TEMP_WARM_MONTH",  # BIO5
-        "MIN_TEMP_COLD_MONTH",  # BIO6
-        "TEMP_RANGE",  # BIO7   (BIO5 - BIO6)
-        "MEAN_TEMP_WET_QUARTER",  # BIO8
-        "MEAN_TEMP_DRY_QUARTER",  # BIO9
-        "MEAN_TEMP_WARM_QUARTER",  # BIO10
-        "MEAN_TEMP_COLD_QUARTER",  # BIO11
-        "ANNUAL_PRECIP",  # BIO12
-        "PRECIP_WET_MONTH",  # BIO13
-        "PRECIP_DRY_MONTH",  # BIO14
-        "PRECIP_SEASONALITY",  # BIO15  (COEFFICIENT of VARIATION)
-        "PRECIP_WET_QUARTER",  # BIO16
-        "PRECIP_DRY_QUARTER",  # BIO17
-        "PRECIP_WARM_QUARTER",  # BIO18
-        "PRECIP_COLD_QUARTER"  # BIO19
-    ]
+    # Load checkpoint first to configure model from saved metadata
+    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
 
-    # Model and Training parameters
-    latent_dim = 16
-    hidden_dims = [64]
-    batch_size = 1024 #256
-    learning_rate = 1e-4
-    num_epochs = 10000
-    dropout_rate = 0.2
-    use_attention = True
+    # Feature columns used by this model (including bioclimatic variables)
+    feature_cols = checkpoint.get('feature_cols')
+
+    # Model and Training parameters (loaded from checkpoint when available)
+    latent_dim = checkpoint.get('latent_dim')
+    hidden_dims = checkpoint.get('hidden_dims')
+    dropout_rate = checkpoint.get('dropout_rate')
+    attention_module_name = checkpoint.get('attention_module')
+    scaler = checkpoint['scaler']
+
+    # Resolve attention module class if specified in checkpoint
+    attention_modules = {
+        'GatedAttention': GatedAttention
+    }
+    attention_module_cls = attention_modules.get(attention_module_name, None)
 
     # Load model
     input_dim = len(feature_cols)
     model = AttentionAutoencoder(
-        input_dim, latent_dim=latent_dim, hidden_dims=hidden_dims,
-        dropout_rate=dropout_rate, use_attention=use_attention
+        input_dim,
+        latent_dim=latent_dim,
+        hidden_dims=hidden_dims,
+        dropout_rate=dropout_rate,
+        attention_module=attention_module_cls
     )
-
-    # Find device
-    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-
-    # Load checkpoint
-    checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    # model.to(device) # Move to GPU
-    model.eval()
-
-    # Load scaler
-    scaler = checkpoint['scaler']
 
     # Loop through all tiles in input directory
     tiles = list(INPUT_PATH.glob("*.tif"))
@@ -146,6 +157,8 @@ def main():
         tile_height = tile_ds.height
         tile_width = tile_ds.width
         sq_m_per_pixel = tile_ds.transform[0] **2
+
+        print(f"tile height: {tile_height} tile width: {tile_width}")
 
         # Read in entire tile
         try:
@@ -167,11 +180,18 @@ def main():
         # Preallocate array for arrays
         all_features = np.zeros((tile_height, tile_width, len(feature_cols)), dtype=np.float32)
 
-        # Convert basal area from square feet per pixel to square feet per acre
-        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) / 4046.86
+        # Convert basal area from square meters per pixel to square feet per acre
+        tile_array[:, :, 0] *= 10.7639  # Convert basal area from square meters to square feet
+        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) * 4046.86  # sq ft per acre
+
+        # Convert max height from meters to feet
+        tile_array[:, :, 1] = tile_array[:, :, 1] * 3.28084
 
         # Convert tree count from tree count per pixel to count per acre
-        tile_array[:, :, 1] = (tile_array[:, :, 1] / sq_m_per_pixel) / 4046.86
+        tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86
+
+        # Clip all to 0
+        tile_array = clip_negs(tile_array, [0, 1, 2])
 
         # Add features from UNET output
         all_features[:, :, 0] = tile_array[:, :, 2] # Tree count
@@ -182,12 +202,14 @@ def main():
 
         # Add elev
         all_features[:, :, 5] = get_feature_tile(LANDFIRE_PATH / "LC20_Elev_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+        all_features[:, :, 5] = all_features[:, :, 5] * 3.28084  # Convert elev from meters to feet
 
         # Add slope
         all_features[:, :, 6] = get_feature_tile(LANDFIRE_PATH / "LC20_SlpP_220.tif", tile_height, tile_width, tile_transform, tile_crs)
-        
+ 
         # Add aspect
         aspect_raw = get_feature_tile(LANDFIRE_PATH / "LC20_Asp_220.tif", tile_height, tile_width, tile_transform, tile_crs)
+
         aspect_rad = np.deg2rad(aspect_raw)
         aspect_cos = np.cos(aspect_rad)
         aspect_sin = np.sin(aspect_rad)
@@ -209,8 +231,8 @@ def main():
         transformer = Transformer.from_crs(tile_ds.crs, "EPSG:4326", always_xy=True)
         lons, lats = transformer.transform(xs, ys)
 
-        all_features[:, :, 9] = lons
-        all_features[:, :, 10] = lats
+        all_features[:, :, 9] = lats
+        all_features[:, :, 10] = lons
 
         # Add all climatic variables
         all_features[:, :, 11] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_1.tif", tile_height, tile_width, tile_transform, tile_crs)
@@ -233,10 +255,113 @@ def main():
         all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
         all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
-        all_features[:, :, 11:30] = 0 # !!! REASSIGNING 0 AS TEST!!!!!
-        
-        # batch_patches = [] # Empty list for batches
-        # batch_indices = [] # Empty list to store batch indices
+
+        ######################################################
+        # # SKLEARN SCALAR FIT
+        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # fia_plot_ids = plot_data.select("SUBPLOTID").to_numpy().flatten() # Save off plot ids
+        # plot_data_features = plot_data[feature_cols] # Select feature cols in correct order
+        # # plot_data_features.write_csv("./CSV_OF_PLOT_DATA_FEATURES.csv")
+        # # exit()
+
+        # plot_data_array = plot_data_features.to_numpy() # Make into numpy array
+
+        # all_features_reshaped = all_features.reshape(-1, all_features.shape[-1]) # Reshape to (w*h, features)
+        # print(f"All features shape: {all_features_reshaped.shape} Plot data array shape: {plot_data_array.shape}")
+
+        # # Scale both
+        # sc = StandardScaler()
+        # fia_data_scaled = sc.fit_transform(plot_data_array)
+        # tile_data_scaled = sc.transform(all_features_reshaped)
+
+        # # Make KD tree from FIA
+        # fia_plot_tree = cKDTree(fia_data_scaled)
+
+        # # Get indices of closest
+        # distances, indices = fia_plot_tree.query(tile_data_scaled, k=10)
+
+        # # Get nearest subp ids by backtracking indices
+        # nearest_subp_ids = fia_plot_ids[indices]
+
+        # flat_spids = nearest_subp_ids.ravel()
+
+        # # Make into DF
+        # spid_df = pl.DataFrame({"SUBPLOTID": flat_spids})
+
+        # joined = spid_df.join(
+        #     plot_data.select(["SUBPLOTID", "TREE_COUNT"]), # This must be DF with plot id col and variable(s) we are mapping
+        #     on="SUBPLOTID",
+        #     how="left"
+        # )
+
+        # var_grid = joined["TREE_COUNT"].to_numpy().reshape(nearest_subp_ids.shape) # Isolate TPA
+        # print(f"var grid shape: {var_grid.shape}")
+
+        # var_avg = np.mean(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate mean
+        # var_std = np.std(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate std dev
+        # print(f"var avg shape: {var_avg.shape}")
+
+        # # Create UNET - TPA PREDICTED band
+        # unet_diff = all_features[:, :, 0] - var_avg
+
+        # band_stack = np.stack((var_avg, var_std, unet_diff), axis=-1) # Stack into bands
+        # print(f"Band stack shape: {band_stack.shape}")
+
+        # print(f"MEAN OF ABS VALUE: {np.mean(np.abs(band_stack[:, :, 2]))}")
+
+        # band_stack = np.transpose(band_stack, (2, 0, 1)) # Put band dimension first for write out
+        # print(f"Band stack shape: {band_stack.shape}")
+
+        # standard_scalar_test_path_name = OUTPUT_PATH / f"STANDARD_SCALER_TEST{file_name}.tif"
+
+        ########################################################
+        # MAKE SCATTER PLOTS
+        # COMP_NAME = "SCALER"
+        # x_vals = var_avg.flatten()
+        # y_vals = all_features[:, :, 0].flatten()
+
+        # make_scatter(x_vals, y_vals, COMP_NAME)
+
+        #####################################################
+        # Write scaler geotif (AFTER SCALAR STUFF)
+        # with rasterio.open(
+        #     standard_scalar_test_path_name,
+        #     'w',
+        #     driver='GTiff',
+        #     height=tile_height,
+        #     width=tile_width,
+        #     count=band_stack.shape[0],
+        #     dtype=np.float32,
+        #     crs=tile_crs,
+        #     transform=tile_transform
+        # ) as dst:
+        #     dst.write(band_stack)
+        # exit()
+
+        ######################################################
+        # HISTOGRAMS
+        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # plot_data_features = plot_data[feature_cols]
+        # num_bins = 100
+        # print(f"FOR TILE {file_name}")
+        # for i, feature in enumerate(plot_data_features.columns):
+        #     print(f"Making plot for {feature}")
+        #     values_fia = plot_data_features[feature].to_numpy()
+        #     values_tile = all_features[:, :, i].flatten()
+        #     plt.figure(figsize=(6, 4))
+        #     xmin = min(values_fia.min(), values_tile.min())
+        #     xmax = max(values_fia.max(), values_tile.max())
+        #     plt.hist(values_fia, bins=num_bins, histtype="step", density=False, color="green", label="FIA plots", range=(xmin, xmax))
+        #     plt.hist(values_tile, bins=num_bins, histtype="step", density=False, color="purple", label="Tile values", range=(xmin, xmax))
+        #     plt.title(f"Hist for FIA plt {feature}")
+        #     plt.xlabel(feature)
+        #     plt.ylabel("Frequency")
+        #     # plt.show()
+        #     plt.savefig(f"./inference/histograms/hist_{feature}_{file_name}.png", dpi=300, bbox_inches="tight")
+        #     plt.close()
+        # exit()
+        ######################################################
+
         for y in range(0, tile_height, CHUNK_SIZE):
             for x in range(0, tile_width, CHUNK_SIZE):
                 # If we are on the edge, make starts be CHUNK_SIZE from edge
@@ -255,57 +380,21 @@ def main():
 
                 # Apply scaler
                 patch_scaled = scaler.transform(patch_reshaped)
-
-                # # Add to batch list
-                # batch_patches.append(patch_scaled)
-                # batch_indices.append((y_start, x_start))
-
-                # if len(batch_patches) == BATCH_SIZE:
-                #     # Stack into tensor
-                #     input_tensor = torch.from_numpy(np.stack(batch_patches).astype("float32"))
-
-                #     # Move to device here if that needs to happen
-
-                #     with torch.no_grad():
-                #         latent_batch = model.encoder(input_tensor)
-
-                #     # Add to output array
-                #     for i, (y0, x0) in enumerate(batch_indices):
-                #         latent_patch = latent_batch[i].cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
-                #         output_array[y0:y0+CHUNK_SIZE, x0:x0+CHUNK_SIZE, :] = latent_patch
-                    
-                #     batch_patches = [] # Empty
-                #     batch_indices = [] # Empty
+                print(patch_scaled)
 
                 # Create tensor and move to device
                 input_tensor = torch.from_numpy(patch_scaled.astype("float32"))#.unsqueeze(0)#.to(device)
+                # print(input_tensor)
 
                 with torch.no_grad():
                     latent = model.encoder(input_tensor)
 
                 # Reshape and move back to cpu
                 latent_patch = latent.cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
+                # print(latent_patch)
 
                 # Store in output array
                 output_array[y_start:y_start+CHUNK_SIZE, x_start:x_start+CHUNK_SIZE, :] = latent_patch
-        
-        # # Run any remaining batches
-        # if batch_patches:
-        #     # Stack into tensor
-        #     input_tensor = torch.from_numpy(np.stack(batch_patches).astype("float32"))
-
-        #     # Move to device here if that needs to happen
-
-        #     with torch.no_grad():
-        #         latent_batch = model.encoder(input_tensor)
-
-        #     # Add to output array
-        #     for i, (y0, x0) in enumerate(batch_indices):
-        #         latent_patch = latent_batch[i].cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
-        #         output_array[y0:y0+CHUNK_SIZE, x0:x0+CHUNK_SIZE, :] = latent_patch
-            
-        #     batch_patches = [] # Empty
-        #     batch_indices = [] # Empty
 
         # Transpose back
         output_array = np.transpose(output_array, (2, 0, 1))
@@ -323,6 +412,7 @@ def main():
             transform=tile_transform
         ) as dst:
             dst.write(output_array)
+        exit()
 
 if __name__ == "__main__":
     main()

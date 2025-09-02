@@ -55,7 +55,7 @@ def calculate_classification_metrics(true_values, pred_values):
     }
 
 
-def visualize_embeddings(model, scaler, plot_data, feature_cols, metrics_to_color, model_name):
+def visualize_embeddings(model, scaler, plot_data, feature_cols, metrics_to_color_con, metrics_to_color_cat, model_name):
     """
     Visualizes embeddings using both t-SNE and UMAP, colored by various metrics.
     Saves all plots to the 'plots/' directory.
@@ -78,14 +78,18 @@ def visualize_embeddings(model, scaler, plot_data, feature_cols, metrics_to_colo
         print(f"Computing {reducer_name.upper()} embeddings...")
         embeddings_2d = reducer.fit_transform(embeddings)
 
+        metrics_to_color = metrics_to_color_con + metrics_to_color_cat
+
         # --- Plotting ---
         for metric in metrics_to_color:
             plt.figure(figsize=(12, 10))
             color_values = plot_data.select(metric).to_numpy().flatten()
 
+            cmap = 'viridis' if metric in metrics_to_color_con else 'tab20'
+
             scatter = plt.scatter(
                 embeddings_2d[:, 0], embeddings_2d[:, 1],
-                c=color_values, cmap='viridis', alpha=0.7, s=30
+                c=color_values, cmap=cmap, alpha=0.7, s=30
             )
 
             # Add units to colorbar label if available
