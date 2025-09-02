@@ -23,18 +23,51 @@ from rasterio.enums import Resampling
 from scipy.interpolate import interpn
 import xarray
 
+from scipy.spatial import cKDTree
+
+
 import matplotlib.pyplot as plt
 
 
-WEIGHT_PATH = Path("weights/gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
-INPUT_PATH = Path("inference/input")
-OUTPUT_PATH = Path("inference/output")
+WEIGHT_PATH = Path("./weights/NOISYgated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+INPUT_PATH = Path("./inference/input")
+OUTPUT_PATH = Path("./inference/output")
 
 CLIMATIC_PATH = Path("data/climatic-interp")
 LANDFIRE_PATH = Path("data/landfire")
 
 CHUNK_SIZE = 64
 BATCH_SIZE = 8
+# x_vals should be predicted, y_vals should be UNET.
+def make_scatter(x_vals, y_vals, name, file_name):
+
+    unet_diff = y_vals - x_vals
+
+    min_val = min(x_vals.min(), y_vals.min())
+    max_val = max(x_vals.max(), y_vals.max())
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # regular scatter
+    axes[0].scatter(x_vals, y_vals, s=5, alpha=0.5)
+    axes[0].set_title(f"UNET vs {name} Predicted")
+    axes[0].set_xlabel(f"{name} prediction")
+    axes[0].set_ylabel("UNET prediction")
+    axes[0].set_xlim(min_val, max_val)
+    axes[0].set_ylim(min_val, max_val)
+    axes[0].plot([min_val, max_val], [min_val, max_val], "r--", linewidth=1) # line
+    axes[0].set_aspect("equal", adjustable="box")
+
+    # residuals
+    axes[1].scatter(x_vals, unet_diff, s=5, alpha=0.5, color="green")
+    axes[1].set_title(f"Residuals (UNET - {name} prediction)")
+    axes[1].set_xlabel(f"{name} prediction")
+    axes[1].set_ylabel("Residuals")
+    axes[1].axhline(0, color="red", linestyle="--", linewidth=1) # line at 0
+
+    plt.tight_layout()
+    plt.savefig(f"./inference/{name}_scatter_plots_{file_name}.png", dpi=300, bbox_inches="tight")
+    plt.close()
 
 def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile_crs):
     print(f"Sampling from {feature_path}")
@@ -59,20 +92,6 @@ def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile
     sampled_array = sampled.values.reshape(tile_height, tile_width)
 
     return sampled_array
-
-# def sanitize_layers(all_features, layer_indices, nodata_threshold=-1000, clip_min=-5, clip_max=5):
-#     for i in layer_indices:
-#         layer = all_features[:, :, i]
-
-#         # Replace nodata
-#         layer[layer < nodata_threshold] = 0.0
-
-#         # Replace NaNs or infs
-#         layer = np.nan_to_num(layer, nan=0.0)
-
-#         # Put back into all_features
-#         all_features[:, :, i] = layer
-#     return all_features
 
 def clip_negs(all_features, layer_indices):
     for i in layer_indices:
@@ -236,11 +255,91 @@ def main():
         all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
         all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
-        # all_features[:, :, 17] = 0
-        # all_features = sanitize_layers(all_features, range(0, 28))
 
-        # Create FIA plot DB for histograms
-        
+        ######################################################
+        # # SKLEARN SCALAR FIT
+        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # fia_plot_ids = plot_data.select("SUBPLOTID").to_numpy().flatten() # Save off plot ids
+        # plot_data_features = plot_data[feature_cols] # Select feature cols in correct order
+        # # plot_data_features.write_csv("./CSV_OF_PLOT_DATA_FEATURES.csv")
+        # # exit()
+
+        # plot_data_array = plot_data_features.to_numpy() # Make into numpy array
+
+        # all_features_reshaped = all_features.reshape(-1, all_features.shape[-1]) # Reshape to (w*h, features)
+        # print(f"All features shape: {all_features_reshaped.shape} Plot data array shape: {plot_data_array.shape}")
+
+        # # Scale both
+        # sc = StandardScaler()
+        # fia_data_scaled = sc.fit_transform(plot_data_array)
+        # tile_data_scaled = sc.transform(all_features_reshaped)
+
+        # # Make KD tree from FIA
+        # fia_plot_tree = cKDTree(fia_data_scaled)
+
+        # # Get indices of closest
+        # distances, indices = fia_plot_tree.query(tile_data_scaled, k=10)
+
+        # # Get nearest subp ids by backtracking indices
+        # nearest_subp_ids = fia_plot_ids[indices]
+
+        # flat_spids = nearest_subp_ids.ravel()
+
+        # # Make into DF
+        # spid_df = pl.DataFrame({"SUBPLOTID": flat_spids})
+
+        # joined = spid_df.join(
+        #     plot_data.select(["SUBPLOTID", "TREE_COUNT"]), # This must be DF with plot id col and variable(s) we are mapping
+        #     on="SUBPLOTID",
+        #     how="left"
+        # )
+
+        # var_grid = joined["TREE_COUNT"].to_numpy().reshape(nearest_subp_ids.shape) # Isolate TPA
+        # print(f"var grid shape: {var_grid.shape}")
+
+        # var_avg = np.mean(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate mean
+        # var_std = np.std(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate std dev
+        # print(f"var avg shape: {var_avg.shape}")
+
+        # # Create UNET - TPA PREDICTED band
+        # unet_diff = all_features[:, :, 0] - var_avg
+
+        # band_stack = np.stack((var_avg, var_std, unet_diff), axis=-1) # Stack into bands
+        # print(f"Band stack shape: {band_stack.shape}")
+
+        # print(f"MEAN OF ABS VALUE: {np.mean(np.abs(band_stack[:, :, 2]))}")
+
+        # band_stack = np.transpose(band_stack, (2, 0, 1)) # Put band dimension first for write out
+        # print(f"Band stack shape: {band_stack.shape}")
+
+        # standard_scalar_test_path_name = OUTPUT_PATH / f"STANDARD_SCALER_TEST{file_name}.tif"
+
+        ########################################################
+        # MAKE SCATTER PLOTS
+        # COMP_NAME = "SCALER"
+        # x_vals = var_avg.flatten()
+        # y_vals = all_features[:, :, 0].flatten()
+
+        # make_scatter(x_vals, y_vals, COMP_NAME)
+
+        #####################################################
+        # Write scaler geotif (AFTER SCALAR STUFF)
+        # with rasterio.open(
+        #     standard_scalar_test_path_name,
+        #     'w',
+        #     driver='GTiff',
+        #     height=tile_height,
+        #     width=tile_width,
+        #     count=band_stack.shape[0],
+        #     dtype=np.float32,
+        #     crs=tile_crs,
+        #     transform=tile_transform
+        # ) as dst:
+        #     dst.write(band_stack)
+        # exit()
+
+        ######################################################
+        # HISTOGRAMS
         # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
         # plot_data_features = plot_data[feature_cols]
         # num_bins = 100
@@ -261,8 +360,7 @@ def main():
         #     plt.savefig(f"./inference/histograms/hist_{feature}_{file_name}.png", dpi=300, bbox_inches="tight")
         #     plt.close()
         # exit()
-
-        # print("all features shape: ", all_features.shape)
+        ######################################################
 
         for y in range(0, tile_height, CHUNK_SIZE):
             for x in range(0, tile_width, CHUNK_SIZE):
@@ -314,7 +412,7 @@ def main():
             transform=tile_transform
         ) as dst:
             dst.write(output_array)
-        # exit()
+        exit()
 
 if __name__ == "__main__":
     main()

@@ -21,15 +21,55 @@ WEIGHT_PATH = Path("weights/gated_attention_autoencoder.pt")
 
 PLOT_ID_COL = 'SUBPLOTID'
 
-KNN = 4 # k nearest neighbors
+KNN = 10 # k nearest neighbors
 
 VAR_TO_MAP = "TREE_COUNT" #'FORTYPCD'
 
-WEIGHTED = True
+CATEGORICAL = False
 
 STATE = "MT"
-
 MIN_DISTANCES = []
+
+
+# x_vals should be predicted, y_vals should be UNET.
+def make_scatter(x_vals, y_vals, name, file_name):
+
+    unet_diff = y_vals - x_vals
+
+    min_val = min(x_vals.min(), y_vals.min())
+    max_val = max(x_vals.max(), y_vals.max())
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    # regular scatter
+    axes[0].scatter(x_vals, y_vals, s=5, alpha=0.5)
+    axes[0].set_title(f"UNET vs {name} Predicted")
+    axes[0].set_xlabel(f"{name} prediction")
+    axes[0].set_ylabel("UNET prediction")
+    axes[0].set_xlim(min_val, max_val)
+    axes[0].set_ylim(min_val, max_val)
+    axes[0].plot([min_val, max_val], [min_val, max_val], "r--", linewidth=1) # line
+    axes[0].set_aspect("equal", adjustable="box")
+
+    # residuals
+    axes[1].scatter(x_vals, unet_diff, s=5, alpha=0.5, color="green")
+    axes[1].set_title(f"Residuals (UNET - {name} prediction)")
+    axes[1].set_xlabel(f"{name} prediction")
+    axes[1].set_ylabel("Residuals")
+    axes[1].axhline(0, color="red", linestyle="--", linewidth=1) # line at 0
+
+    plt.tight_layout()
+    plt.savefig(f"./inference/{name}_scatter_plots_{file_name}.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+# Remove later
+def clip_negs(all_features, layer_indices):
+    for i in layer_indices:
+        layer = all_features[:, :, i]
+        layer = np.nan_to_num(layer) # Replace nans with 0
+        layer[layer < 0] = 0.0 # Clip to 0
+        all_features[:, :, i] = layer
+    return all_features
 
 def main():
  
@@ -80,7 +120,7 @@ def main():
     scaler = checkpoint['scaler']
     # Make dataframe of all FIA plots
     plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
-    
+
     # Get encoded version of this
     ALL_PLOT = plot_data.select(feature_cols).to_numpy()
     ALL_PLOT = np.nan_to_num(ALL_PLOT, nan=0.0)
@@ -123,7 +163,7 @@ def main():
     latents = list(LATENT_MAP_PATH.glob("*.tif"))
     for latent in tqdm(latents):
         # Get output file name
-        file_name = f"{latent.stem}.tif"
+        file_name = f"ONODRIM_VAR_MATCH{latent.stem}.tif"
         output_file_path = OUTPUT_PATH / file_name
 
         # Open latent space raster
@@ -135,6 +175,8 @@ def main():
                 profile = src.profile
                 height, width = src.height, src.width
                 latent_dtype = src.dtypes[0]
+                crs = src.crs
+                transform = src.transform
         except RasterioIOError as e:
             print(f"Error opening {file_name}. Skipping.")
 
@@ -155,32 +197,70 @@ def main():
         )
 
         var_grid = joined[VAR_TO_MAP].to_numpy().reshape(nearest_spids.shape)
+        print(f"var grid shape: {var_grid.shape}")
 
-        # neighbor_values = np.array([[subp_map.get(sid, np.nan) for sid in row] for row in nearest_spids])
+        # Waiting to deal with categorical for a sec
+        # # Take mode of categorical
+        # if CATEGORICAL:
+        #     var_grid, counts = mode(var_grid, axis=1, nan_policy="omit")
+        #     var_grid = var_grid.ravel()
+        # # Else regular average
+        # else:
 
-        # Weighted average
-        if WEIGHTED:
-            weights = 1 / (distances + 1e-6)
-            var_grid = np.nansum(var_grid * weights, axis=1) / np.nansum(weights, axis=1)
-        # Mode for categorical
+        # FOR k=1
+        if KNN > 1:
+            var_avg = np.mean(var_grid, axis=-1).reshape(height, width)
+            var_std = np.std(var_grid, axis=-1).reshape(height, width)
         else:
-            var_grid, counts = mode(var_grid, axis=1, nan_policy="omit")
-            var_grid = var_grid.ravel()
+            var_avg = var_grid.reshape(height, width)
+            var_std = var_grid.reshape(height, width)
 
-        # Reshape to tile shape
-        var_grid = var_grid.reshape(height, width)
+        print(f"var avg shape: {var_avg.shape}")
 
+        # Adding in UNET TPA diff band
+        unet_tif_path = Path("./inference/input") / f"{latent.stem}.tif"
+        print(f"UNET tif path: {unet_tif_path} Output file name: {output_file_path}")
+        tile_ds = rasterio.open(unet_tif_path)
+        tile_array = tile_ds.read()
+        tile_array = np.transpose(tile_array, (1, 2, 0)) # Transpose to (H, W, C)
+        sq_m_per_pixel = tile_ds.transform[0] **2
+        # tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86 # Convert tree count from tree count per pixel to count per acre
+        tile_array[:, :, 0] *= 10.7639  # Convert basal area from square meters to square feet
+        tile_array[:, :, 0] = (tile_array[:, :, 0] / sq_m_per_pixel) * 4046.86  # sq ft per acre
+        tile_array = clip_negs(tile_array, [0]) # Clip negatives from tree count band
+        unet_var = tile_array[:, :, 0]
 
-        # Update tif profile
-        profile.update(
-            dtype=latent_dtype,
-            count=1,
-            compress="lzw"
-        )
+        # Create UNET - TPA PREDICTED band
+        unet_diff = unet_var - var_avg
 
-        # Write out
-        with rasterio.open(output_file_path, "w", **profile) as dst:
-            dst.write(var_grid.astype(latent_dtype), 1)
+        x_vals = var_avg.flatten()
+        y_vals = unet_var.flatten()
+
+        make_scatter(x_vals, y_vals, f"ONODRIM_BASAL_K{KNN}", latent.stem)
+        exit() # EXIT AFTER SCATTER
+
+        band_stack = np.stack((var_avg, var_std, unet_diff), axis=-1)
+
+        print(f"MEAN OF ABS VALUE: {np.mean(np.abs(band_stack[:, :, 2]))}")
+
+        print(f"Band stack shape: {band_stack.shape}")
+        band_stack = np.transpose(band_stack, (2, 0, 1))
+
+        print(f"Band stack shape: {band_stack.shape}")
+
+        with rasterio.open(
+            output_file_path,
+            'w',
+            driver='GTiff',
+            height=height,
+            width=width,
+            count=band_stack.shape[0],
+            dtype=np.float32,
+            crs=crs,
+            transform=transform
+        ) as dst:
+            dst.write(band_stack)
+        exit()
 
 
 if __name__ == "__main__":
