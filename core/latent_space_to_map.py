@@ -15,9 +15,9 @@ from DataFrames import create_polars_dataframe_by_subplot
 import database as db
 
 
-LATENT_MAP_PATH = Path("./inference/output")
-OUTPUT_PATH = Path("./inference/variable-maps")
-WEIGHT_PATH = Path("./weights/gated_attention_autoencoder.pt")
+LATENT_MAP_PATH = Path("inference/output")
+OUTPUT_PATH = Path("inference/variable-maps")
+WEIGHT_PATH = Path("weights/gated_attention_autoencoder.pt")
 
 PLOT_ID_COL = 'SUBPLOTID'
 
@@ -28,6 +28,8 @@ VAR_TO_MAP = "TREE_COUNT" #'FORTYPCD'
 WEIGHTED = True
 
 STATE = "MT"
+
+MIN_DISTANCES = []
 
 def main():
  
@@ -179,7 +181,6 @@ def main():
         # Write out
         with rasterio.open(output_file_path, "w", **profile) as dst:
             dst.write(var_grid.astype(latent_dtype), 1)
-        exit()
 
 
 if __name__ == "__main__":

@@ -9,9 +9,9 @@ import rioxarray
 import xarray
 from shapely.geometry import box
 
-SHAPE_PATH = Path("./bozeman_rd_shape")
-CLIMATIC_PATH = Path("./climatic")
-OUTPUT_PATH = Path("./climatic-interp-brd")
+SHAPE_PATH = Path("data/gallatin-county/gallatin-co-mt.shp")
+CLIMATIC_PATH = Path("data/climatic")
+OUTPUT_PATH = Path("data/climatic-interp")
 
 def main():
     gdf = gpd.read_file(SHAPE_PATH)

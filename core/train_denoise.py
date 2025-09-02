@@ -44,15 +44,15 @@ def train_autoencoder(model, model_name, train_loader, test_loader, feature_cols
         model.train()
         train_loss = 0.0
         for features, _ in train_loader:
-            # reconstructed, _ = model(features)
-            # loss = criterion(reconstructed, features)
+            reconstructed, _ = model(features)
+            loss = criterion(reconstructed, features)
 
             noise = torch.randn_like(features) * noise_std
             noisy_features = features + noise
             noisy_reconstructed, _ = model(noisy_features)
             noisy_loss = criterion(noisy_reconstructed, features)
 
-            loss = noisy_loss
+            loss = (loss + noisy_loss) / 2
 
             # loss = (loss + noisy_loss) / 2
 
