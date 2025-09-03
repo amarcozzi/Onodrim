@@ -31,6 +31,7 @@ VAR_TO_MAP = "TREE_COUNT"
 
 CATEGORICAL = False
 
+
 # x_vals should be predicted, y_vals should be UNET.
 def make_scatter(x_vals, y_vals, name, file_name):
 
@@ -255,7 +256,7 @@ def main():
         #     var_grid = var_grid.ravel()
         # # Else regular average
         # else:
-        
+
         # FOR k=1
         if KNN > 1:
             var_avg = np.nanmean(var_grid, axis=-1).reshape(height, width)
