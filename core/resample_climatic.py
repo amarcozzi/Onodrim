@@ -9,9 +9,10 @@ import rioxarray
 import xarray
 from shapely.geometry import box
 
-SHAPE_PATH = Path("./bozeman_rd_shape")
-CLIMATIC_PATH = Path("./climatic")
-OUTPUT_PATH = Path("./climatic-interp-brd")
+AOI_PATH = Path("./inference/coconino")
+SHAPE_PATH = Path("./data/coconino_shape.geojson")
+CLIMATIC_PATH = Path("./data/climatic")
+OUTPUT_PATH = AOI_PATH / Path("./climatic-interpolated")
 
 def main():
     gdf = gpd.read_file(SHAPE_PATH)
@@ -25,7 +26,7 @@ def main():
         if output_file_path.exists():
             print(f"{file_name} already exists, skipping.")
             continue
-        print(f"Creating interpolated raster for {file_name}")
+        print(f"Creating interpolated raster for {file_name}, will save to {output_file_path}")
 
         cf = rioxarray.open_rasterio(climatic_file)
 

@@ -28,16 +28,22 @@ from scipy.spatial import cKDTree
 
 import matplotlib.pyplot as plt
 
+AOI_PATH = Path("./inference/coconino")
+STATE = "AZ"
+WEIGHT_PATH = AOI_PATH / Path("./weights/sept2_gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+INPUT_PATH = AOI_PATH / Path("./UNET-input")
+OUTPUT_PATH = AOI_PATH / Path("./LATENT-output")
 
-WEIGHT_PATH = Path("./weights/NOISYgated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
-INPUT_PATH = Path("./inference/input")
-OUTPUT_PATH = Path("./inference/output")
-
-CLIMATIC_PATH = Path("data/climatic-interp")
+CLIMATIC_PATH = AOI_PATH / Path("./climatic-interpolated")
 LANDFIRE_PATH = Path("data/landfire")
 
 CHUNK_SIZE = 64
-BATCH_SIZE = 8
+
+# For clipping. Max from FIA.
+MAX_TPA = 1347 # Count per acre
+MAX_MAX_HT = 191 # Feet
+MAX_BASAL_AREA = 861 # feet^2 per acre
+
 # x_vals should be predicted, y_vals should be UNET.
 def make_scatter(x_vals, y_vals, name, file_name):
 
@@ -70,7 +76,7 @@ def make_scatter(x_vals, y_vals, name, file_name):
     plt.close()
 
 def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile_crs):
-    print(f"Sampling from {feature_path}")
+    # print(f"Sampling from {feature_path}")
     feature = rioxarray.open_rasterio(feature_path)
 
     rows, cols = np.meshgrid(np.arange(tile_height), np.arange(tile_width), indexing='ij')
@@ -93,13 +99,11 @@ def get_feature_tile(feature_path, tile_height, tile_width, tile_transform, tile
 
     return sampled_array
 
-def clip_negs(all_features, layer_indices):
-    for i in layer_indices:
-        layer = all_features[:, :, i]
-        layer = np.nan_to_num(layer) # Replace nans with 0
-        layer[layer < 0] = 0.0 # Clip to 0
-        all_features[:, :, i] = layer
-    return all_features
+def clip_tile(layer, max):
+    layer = np.nan_to_num(layer) # Replace nans with 0
+    layer[layer <= 0] = np.nan # Replace negs and 0s with nans
+    layer[layer > max] = np.nan # Replace values over a max with nans
+    return layer
 
 def main():
     # Check paths
@@ -113,7 +117,7 @@ def main():
         print(f"Weight path {WEIGHT_PATH} does not exist, exiting.")
         exit()
 
-    print(f"Chunk size: {CHUNK_SIZE} Batch size: {BATCH_SIZE}")
+    print(f"Chunk size: {CHUNK_SIZE}")
 
     # Load checkpoint first to configure model from saved metadata
     checkpoint = torch.load(WEIGHT_PATH, map_location="cpu", weights_only=False)
@@ -158,7 +162,7 @@ def main():
         tile_width = tile_ds.width
         sq_m_per_pixel = tile_ds.transform[0] **2
 
-        print(f"tile height: {tile_height} tile width: {tile_width}")
+        # print(f"tile height: {tile_height} tile width: {tile_width}")
 
         # Read in entire tile
         try:
@@ -190,8 +194,10 @@ def main():
         # Convert tree count from tree count per pixel to count per acre
         tile_array[:, :, 2] = (tile_array[:, :, 2] / sq_m_per_pixel) * 4046.86
 
-        # Clip all to 0
-        tile_array = clip_negs(tile_array, [0, 1, 2])
+        # Clip to 0 and replace outliers with nans
+        tile_array[:, :, 0] = clip_tile(tile_array[:, :, 0], MAX_BASAL_AREA)
+        tile_array[:, :, 1] = clip_tile(tile_array[:, :, 1], MAX_MAX_HT)
+        tile_array[:, :, 2] = clip_tile(tile_array[:, :, 2], MAX_TPA)
 
         # Add features from UNET output
         all_features[:, :, 0] = tile_array[:, :, 2] # Tree count
@@ -258,10 +264,16 @@ def main():
 
         ######################################################
         # # SKLEARN SCALAR FIT
-        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # VAR_TO_PLOT = "OFE"
+        # plot_data = create_polars_dataframe_by_subplot(STATE, climate_resolution="10m")
         # fia_plot_ids = plot_data.select("SUBPLOTID").to_numpy().flatten() # Save off plot ids
         # plot_data_features = plot_data[feature_cols] # Select feature cols in correct order
-        # # plot_data_features.write_csv("./CSV_OF_PLOT_DATA_FEATURES.csv")
+        # # # Print FIA maxes
+        # # print(f"Max TPA: {plot_data_features['TREE_COUNT'].max()} "
+        # #         f"Max height: {plot_data_features['MAX_HT'].max()} "
+        # #         f"Max basal area: {plot_data_features['BASAL_AREA_TREE'].max()}")
+        # # exit()
+        # plot_data_features.write_csv("./CSV_OF_PLOT_DATA_FEATURES.csv")
         # # exit()
 
         # plot_data_array = plot_data_features.to_numpy() # Make into numpy array
@@ -277,8 +289,23 @@ def main():
         # # Make KD tree from FIA
         # fia_plot_tree = cKDTree(fia_data_scaled)
 
+        # KNN = 1
+        # valid_mask = ~np.isnan(tile_data_scaled).any(axis=1) # Create mask of valid latent pixels
+        # distances = np.full((tile_data_scaled.shape[0], KNN), np.nan, dtype=float) # Create nan distances array 
+        # indices = np.full((tile_data_scaled.shape[0], KNN), -1, dtype=int) # Create indices array of all -1
+
         # # Get indices of closest
-        # distances, indices = fia_plot_tree.query(tile_data_scaled, k=10)
+        # if np.any(valid_mask):
+        #     distances_valid, indices_valid = fia_plot_tree.query(tile_data_scaled[valid_mask], k=KNN)
+
+        #     # Add dimension for KNN==1
+        #     if KNN == 1:
+        #         distances_valid = distances_valid[:, np.newaxis]
+        #         indices_valid = indices_valid[:, np.newaxis]
+            
+        #     # Put valid values back in distance and index arrays
+        #     distances[valid_mask] = distances_valid
+        #     indices[valid_mask] = indices_valid
 
         # # Get nearest subp ids by backtracking indices
         # nearest_subp_ids = fia_plot_ids[indices]
@@ -288,17 +315,39 @@ def main():
         # # Make into DF
         # spid_df = pl.DataFrame({"SUBPLOTID": flat_spids})
 
+        # # Load in Old Growth CSV
+        # OLD_GROWTH = pl.read_csv("./inference/coconino/subplot-ofe-AZ.csv")
+        # # Create SUBPLOTID
+        # OLD_GROWTH = OLD_GROWTH.with_columns(
+        #                             pl.concat_str(
+        #                             [
+        #                                     pl.col("PLT_CN"),
+        #                                     pl.col("SUBP")
+        #                                     ],
+        #                                     separator= "",
+        #                                 ).alias("SUBPLOTID"),
+        #                             )
+        # # unique_subpids_ofe = len(OLD_GROWTH["SUBPLOTID"].unique())
+        # # print(f"Unique: {unique_subpids_ofe} Len: {len(OLD_GROWTH['SUBPLOTID'])} Diff: {len(OLD_GROWTH['SUBPLOTID']) - unique_subpids_ofe}")
+        # # exit()
+        # # Cast to int64 for join
+        # OLD_GROWTH = OLD_GROWTH.with_columns([
+        #     pl.col("SUBPLOTID").cast(pl.Int64)
+        # ])
+        # print("old growth: ", OLD_GROWTH)
+        # OLD_GROWTH_unique = OLD_GROWTH.unique(subset=["SUBPLOTID"]) # Taking out unique, temp fix!!!
+
         # joined = spid_df.join(
-        #     plot_data.select(["SUBPLOTID", "TREE_COUNT"]), # This must be DF with plot id col and variable(s) we are mapping
+        #     OLD_GROWTH_unique.select(["SUBPLOTID", VAR_TO_PLOT]), # This must be DF with plot id col and variable(s) we are mapping
         #     on="SUBPLOTID",
         #     how="left"
         # )
 
-        # var_grid = joined["TREE_COUNT"].to_numpy().reshape(nearest_subp_ids.shape) # Isolate TPA
+        # var_grid = joined[VAR_TO_PLOT].to_numpy().reshape(nearest_subp_ids.shape) # Isolate var
         # print(f"var grid shape: {var_grid.shape}")
 
-        # var_avg = np.mean(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate mean
-        # var_std = np.std(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate std dev
+        # var_avg = np.nanmean(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate mean
+        # var_std = np.nanstd(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate std dev
         # print(f"var avg shape: {var_avg.shape}")
 
         # # Create UNET - TPA PREDICTED band
@@ -312,10 +361,10 @@ def main():
         # band_stack = np.transpose(band_stack, (2, 0, 1)) # Put band dimension first for write out
         # print(f"Band stack shape: {band_stack.shape}")
 
-        # standard_scalar_test_path_name = OUTPUT_PATH / f"STANDARD_SCALER_TEST{file_name}.tif"
+        # standard_scalar_test_path_name = OUTPUT_PATH / f"{VAR_TO_PLOT}STANDARD_SCALER_TEST{file_name}.tif"
 
         ########################################################
-        # MAKE SCATTER PLOTS
+        # # MAKE SCATTER PLOTS
         # COMP_NAME = "SCALER"
         # x_vals = var_avg.flatten()
         # y_vals = all_features[:, :, 0].flatten()
@@ -323,7 +372,7 @@ def main():
         # make_scatter(x_vals, y_vals, COMP_NAME)
 
         #####################################################
-        # Write scaler geotif (AFTER SCALAR STUFF)
+        # # Write scaler geotif (AFTER SCALAR STUFF)
         # with rasterio.open(
         #     standard_scalar_test_path_name,
         #     'w',
@@ -339,25 +388,43 @@ def main():
         # exit()
 
         ######################################################
-        # HISTOGRAMS
-        # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
-        # plot_data_features = plot_data[feature_cols]
+        # # HISTOGRAMS
+        # # # All feature values vs FIA
+        # # plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+        # # plot_data_features = plot_data[feature_cols]
+        # # num_bins = 100
+        # # print(f"FOR TILE {file_name}")
+        # # for i, feature in enumerate(plot_data_features.columns):
+        # #     print(f"Making plot for {feature}")
+        # #     values_fia = plot_data_features[feature].to_numpy()
+        # #     values_tile = all_features[:, :, i].flatten()
+        # #     plt.figure(figsize=(6, 4))
+        # #     xmin = min(values_fia.min(), values_tile.min())
+        # #     xmax = max(values_fia.max(), values_tile.max())
+        # #     plt.hist(values_fia, bins=num_bins, histtype="step", density=False, color="green", label="FIA plots", range=(xmin, xmax))
+        # #     plt.hist(values_tile, bins=num_bins, histtype="step", density=False, color="purple", label="Tile values", range=(xmin, xmax))
+        # #     plt.title(f"Hist for FIA plt {feature}")
+        # #     plt.xlabel(feature)
+        # #     plt.ylabel("Frequency")
+        # #     # plt.show()
+        # #     plt.savefig(f"./inference/histograms/hist_{feature}_{file_name}.png", dpi=300, bbox_inches="tight")
+        # #     plt.close()
+        # # exit()
+
         # num_bins = 100
         # print(f"FOR TILE {file_name}")
-        # for i, feature in enumerate(plot_data_features.columns):
-        #     print(f"Making plot for {feature}")
-        #     values_fia = plot_data_features[feature].to_numpy()
+        # for i in range(0, 3):
+        #     print(f"Making plot for {i}")
         #     values_tile = all_features[:, :, i].flatten()
         #     plt.figure(figsize=(6, 4))
-        #     xmin = min(values_fia.min(), values_tile.min())
-        #     xmax = max(values_fia.max(), values_tile.max())
-        #     plt.hist(values_fia, bins=num_bins, histtype="step", density=False, color="green", label="FIA plots", range=(xmin, xmax))
+        #     xmin = values_tile.min()
+        #     xmax = values_tile.max()
         #     plt.hist(values_tile, bins=num_bins, histtype="step", density=False, color="purple", label="Tile values", range=(xmin, xmax))
-        #     plt.title(f"Hist for FIA plt {feature}")
-        #     plt.xlabel(feature)
+        #     plt.title(f"Hist for FIA plt {i}")
+        #     plt.xlabel(i)
         #     plt.ylabel("Frequency")
         #     # plt.show()
-        #     plt.savefig(f"./inference/histograms/hist_{feature}_{file_name}.png", dpi=300, bbox_inches="tight")
+        #     plt.savefig(f"./inference/hist_JUST_UNET_{i}_{file_name}.png", dpi=300, bbox_inches="tight")
         #     plt.close()
         # exit()
         ######################################################
@@ -378,20 +445,25 @@ def main():
                 # Reshape
                 patch_reshaped = patch.reshape(-1, patch.shape[-1])
 
-                # Apply scaler
-                patch_scaled = scaler.transform(patch_reshaped)
-                print(patch_scaled)
+                valid_mask = ~np.isnan(patch_reshaped).any(axis=1) # Mask where entire vector is valid
 
-                # Create tensor and move to device
-                input_tensor = torch.from_numpy(patch_scaled.astype("float32"))#.unsqueeze(0)#.to(device)
-                # print(input_tensor)
+                latent_patch = np.full((patch_reshaped.shape[0], latent_dim), np.nan, dtype=float) # Create full nan "latent" patch to fill in later
 
-                with torch.no_grad():
-                    latent = model.encoder(input_tensor)
+                if np.any(valid_mask):
 
-                # Reshape and move back to cpu
-                latent_patch = latent.cpu().numpy().reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim)
-                # print(latent_patch)
+                    # Apply scaler
+                    patch_scaled = scaler.transform(patch_reshaped[valid_mask])
+
+                    # Create tensor and move to device
+                    input_tensor = torch.from_numpy(patch_scaled.astype("float32"))#.unsqueeze(0)#.to(device)
+
+                    with torch.no_grad():
+                        latent_valid = model.encoder(input_tensor)
+
+                    # Reshape and move back to cpu
+                    latent_patch[valid_mask] = latent_valid # Fill in latent patch with valid pixels
+
+                latent_patch = latent_patch.reshape(CHUNK_SIZE, CHUNK_SIZE, latent_dim) # Reshape
 
                 # Store in output array
                 output_array[y_start:y_start+CHUNK_SIZE, x_start:x_start+CHUNK_SIZE, :] = latent_patch
@@ -412,7 +484,7 @@ def main():
             transform=tile_transform
         ) as dst:
             dst.write(output_array)
-        exit()
+        # exit()
 
 if __name__ == "__main__":
     main()

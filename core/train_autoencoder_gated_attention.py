@@ -5,6 +5,7 @@ Main script to train and evaluate the autoencoder model with a gated attention m
 """
 import torch
 from DataFrames import create_polars_dataframe_by_subplot
+from pathlib import Path
 
 # Import shared modules
 from dataloader import prepare_data, create_output_directories
@@ -12,11 +13,19 @@ from models import AttentionAutoencoder, GatedAttention
 from train_denoise import train_autoencoder
 from evaluation import run_evaluation
 
+AOI_PATH = Path("./inference/coconino")
+STATE = "AZ"
 
 def main():
     # --- Configuration for Attention Autoencoder ---
     MODEL_NAME = 'gated_attention_autoencoder'
     PLOT_ID_COL = 'SUBPLOTID'
+
+
+    save_dir = AOI_PATH / "./weights" #f'./weights/{MODEL_NAME}.pt'
+    if not save_dir.exists():
+        print(f"Save path {save_dir} does not exist, exiting.")
+        exit()
 
     # --- Setup ---
     create_output_directories()
@@ -73,7 +82,7 @@ def main():
 
     # --- Data Loading and Preparation ---
     print("Loading data...")
-    plot_data = create_polars_dataframe_by_subplot("MT", climate_resolution="10m")
+    plot_data = create_polars_dataframe_by_subplot(STATE, climate_resolution="10m")
 
     print("Preparing data loaders...")
     train_loader, test_loader, scaler, X_test, y_test = prepare_data(
@@ -103,7 +112,7 @@ def main():
     )
 
     # --- Save Model ---
-    save_path = f'weights/{MODEL_NAME}.pt'
+    save_path = AOI_PATH / f'./weights/{MODEL_NAME}.pt'
     torch.save({
         'model_state_dict': model.state_dict(),
         'scaler': scaler,
@@ -118,7 +127,7 @@ def main():
         'num_epochs': num_epochs,
         'evaluation_metrics': evaluation_metrics
     }, save_path)
-    print(f"Model and scaler saved to {save_path}")
+    print(f"Model for {STATE} and scaler saved to {save_path}")
 
 
 if __name__ == "__main__":

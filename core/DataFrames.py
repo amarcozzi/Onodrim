@@ -17,10 +17,11 @@ fortyp_json = "forest_type_codes.json"
 data_dir = "data"
 
 #FIADB desired columns
-cond_selected_columns = ["PLT_CN", "ASPECT", "SLOPE", "FORTYPCD"]
+cond_selected_columns = ["PLT_CN", "CONDID", "COND_STATUS_CD", "ASPECT", "SLOPE", "FORTYPCD"]
 subp_selected_columns = ["PLT_CN", "SUBP"]
 tree_selected_columns = ["CN","SUBP", "PLT_CN", "STATUSCD", "DIA", "ACTUALHT","HT", "TPA_UNADJ"]
-plot_selected_columns = ["CN", "DESIGNCD", "ELEV", "LAT", "LON", "PLOT_STATUS_CD"]
+# The _PUBLIC must be changed back to no underscore for not AZ. Bc of the new table.
+plot_selected_columns = ["CN", "DESIGNCD", "ELEV_PUBLIC", "LAT_PUBLIC", "LON_PUBLIC", "PLOT_STATUS_CD"]
 
 #FINAL FEATURE COLUMNS
 feature_cols = [
@@ -151,14 +152,23 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
 
     TREE = db.get_df_from_db(state, "TREE", tree_selected_columns)
     TREE = TREE.sort("PLT_CN")
+    print("tree shape: ", TREE.shape)
 
     PLOT = db.get_df_from_db(state, "PLOT", plot_selected_columns)
     PLOT = PLOT.rename({"CN": "PLT_CN"})
+    PLOT = PLOT.rename({"ELEV_PUBLIC": "ELEV"})
+    PLOT = PLOT.rename({"LAT_PUBLIC": "LAT"})
+    PLOT = PLOT.rename({"LON_PUBLIC": "LON"})
     PLOT = PLOT.sort("PLT_CN")
 
     SUBP = db.get_df_from_db(state, "SUBPLOT", subp_selected_columns)
     SUBP = SUBP.join(COND, on="PLT_CN", how="right", coalesce=True)
     SUBP = SUBP.drop_nulls()
+
+    SUBP_COND = db.get_df_from_db(state, "SUBP_COND", ["PLT_CN", "SUBP", "CONDID"])
+    print(SUBP_COND)
+    print(SUBP_COND.shape)
+    # exit()
     #create our subplot id for readability
     SUBP = SUBP.with_columns(
                                 pl.concat_str(
