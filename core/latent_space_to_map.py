@@ -15,9 +15,9 @@ from DataFrames import create_polars_dataframe_by_subplot
 import database as db
 
 
-LATENT_MAP_PATH = Path("./inference/output")
-OUTPUT_PATH = Path("./inference/variable-maps")
-WEIGHT_PATH = Path("./weights/NOISYgated_attention_autoencoder.pt")
+LATENT_MAP_PATH = Path("inference/output")
+OUTPUT_PATH = Path("inference/variable-maps")
+WEIGHT_PATH = Path("weights/gated_attention_autoencoder.pt")
 
 PLOT_ID_COL = 'SUBPLOTID'
 
@@ -28,6 +28,8 @@ VAR_TO_MAP = "TREE_COUNT" #'FORTYPCD'
 CATEGORICAL = False
 
 STATE = "MT"
+MIN_DISTANCES = []
+
 
 # x_vals should be predicted, y_vals should be UNET.
 def make_scatter(x_vals, y_vals, name, file_name):
@@ -204,7 +206,7 @@ def main():
         #     var_grid = var_grid.ravel()
         # # Else regular average
         # else:
-        
+
         # FOR k=1
         if KNN > 1:
             var_avg = np.mean(var_grid, axis=-1).reshape(height, width)
