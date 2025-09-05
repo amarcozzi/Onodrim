@@ -9,8 +9,8 @@ import rioxarray
 import xarray
 from shapely.geometry import box
 
-AOI_PATH = Path("./inference/coconino")
-SHAPE_PATH = Path("./data/coconino_shape.geojson")
+AOI_PATH = Path("./inference/gallatin-county")
+SHAPE_PATH = Path("./inference/gallatin-county/gallatin-county-shape/gallatin-co-mt.shp")
 CLIMATIC_PATH = Path("./data/climatic")
 OUTPUT_PATH = AOI_PATH / Path("./climatic-interpolated")
 

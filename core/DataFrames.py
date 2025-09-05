@@ -144,7 +144,7 @@ def weighted_gini(values, weights):
     return num / den
 
 def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
-    print("Creating Polars DataFrame")
+    # print("Creating Polars DataFrame")
 
     #retrieve our data from the SQL database
     COND = db.get_df_from_db(state,"COND", cond_selected_columns)
@@ -152,7 +152,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
 
     TREE = db.get_df_from_db(state, "TREE", tree_selected_columns)
     TREE = TREE.sort("PLT_CN")
-    print("tree shape: ", TREE.shape)
+    # print("tree shape: ", TREE.shape)
 
     PLOT = db.get_df_from_db(state, "PLOT", plot_selected_columns)
     PLOT = PLOT.rename({"CN": "PLT_CN"})
@@ -165,9 +165,9 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     SUBP = SUBP.join(COND, on="PLT_CN", how="right", coalesce=True)
     SUBP = SUBP.drop_nulls()
 
-    SUBP_COND = db.get_df_from_db(state, "SUBP_COND", ["PLT_CN", "SUBP", "CONDID"])
-    print(SUBP_COND)
-    print(SUBP_COND.shape)
+    # SUBP_COND = db.get_df_from_db(state, "SUBP_COND", ["PLT_CN", "SUBP", "CONDID"])
+    # print(SUBP_COND)
+    # print(SUBP_COND.shape)
     # exit()
     #create our subplot id for readability
     SUBP = SUBP.with_columns(
@@ -180,7 +180,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
                                     ).alias("SUBPLOT_ID"),
                                 )
     SUBP = SUBP.sort("SUBPLOT_ID")
-    print(SUBP)
+    # print(SUBP)
 
     #calculate the basal area of each stem recorded in the TREE table
     TREE = TREE.with_columns([
@@ -237,7 +237,7 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     TREEGRP = TREEGRP.with_columns([
         np.sqrt(pl.col("DIA_SQR_TREE") / (pl.col("TREE_COUNT"))).alias("QMD_TREE")
     ])
-    print(TREEGRP)
+    # print(TREEGRP)
 
     # Add SUBPLOTID to TREE DF to maintain consistency in grouping
     TREE = TREE.with_columns(
@@ -292,14 +292,14 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
         {"SUBPLOTID": list(ht_gini_results.keys()), "GINI_HT": list(ht_gini_results.values())}
     )
     TREEGRP = TREEGRP.join(GINI_HT, on="SUBPLOTID", how="left")
-    print(TREEGRP)
+    # print(TREEGRP)
 
     #join out PLOT, SUBP, and COND tables together
     CONDGRP = PLOT.join(SUBP,on="PLT_CN", how="right", coalesce=True)
     CONDGRP = CONDGRP.drop_nulls()
     CONDGRP = CONDGRP.unique("SUBPLOT_ID")
     CONDGRP = CONDGRP.sort("SUBPLOT_ID")
-    print(f"CONDGRP with dropped nulls {CONDGRP}")
+    # print(f"CONDGRP with dropped nulls {CONDGRP}")
 
 
     #join our CONDGRP with our TREEGRP tables for final data frame
@@ -322,8 +322,8 @@ def create_polars_dataframe_by_subplot(state, climate_resolution="2.5m"):
     # Drop NaN values
     FINAL = FINAL.drop_nulls()
 
-    print(f"Final DataFrame {FINAL} ")
-    FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",")  # write as csv for checks and records
+    # print(f"Final DataFrame {FINAL} ")
+    # FINAL.write_csv(os.path.join(data_dir, "output.csv"), separator=",")  # write as csv for checks and records
 
     return FINAL
 

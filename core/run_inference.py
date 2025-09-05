@@ -22,27 +22,187 @@ from rasterio.vrt import WarpedVRT
 from rasterio.enums import Resampling
 from scipy.interpolate import interpn
 import xarray
+# from sklearn.utils.extmath import weighted_mode
+# from joblib import parallel_backend
+from scipy.stats import mode
 
 from scipy.spatial import cKDTree
 
 
 import matplotlib.pyplot as plt
 
-AOI_PATH = Path("./inference/coconino")
-STATE = "AZ"
-WEIGHT_PATH = AOI_PATH / Path("./weights/sept2_gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
+AOI_PATH = Path("./inference/gallatin-county")
+STATE = "MT"
+
 INPUT_PATH = AOI_PATH / Path("./UNET-input")
+
+# Onodrim
+WEIGHT_PATH = AOI_PATH / Path("./weights/gated_attention_autoencoder.pt") #Path("./gini_coef_comparison/PLOTS_BOTH_GINI/BOTH_GINI_attention_autoencoder.pt") #Path("./weights/attention_autoencoder.pt")
 OUTPUT_PATH = AOI_PATH / Path("./LATENT-output")
+CHUNK_SIZE = 64
+
+# FOR SCALER
+VAR_TO_PLOT = "FORTYPCD"
+CATEGORICAL = True
+KNN = 10
+WEIGHTED = False
+SCALER_OUTPUT_PATH = AOI_PATH / Path(f"./SCALER-variable-maps/{VAR_TO_PLOT}")
 
 CLIMATIC_PATH = AOI_PATH / Path("./climatic-interpolated")
 LANDFIRE_PATH = Path("data/landfire")
-
-CHUNK_SIZE = 64
 
 # For clipping. Max from FIA.
 MAX_TPA = 1347 # Count per acre
 MAX_MAX_HT = 191 # Feet
 MAX_BASAL_AREA = 861 # feet^2 per acre
+
+METHOD = 1 # 0 = Onodrim, 1 = Scaler
+
+def fit_scaler(tile_features, plot_data, fia_data_scaled, fia_plot_ids, std_scaler, tile_height, tile_width, tile_crs, tile_transform, file_name, JOIN_COL="SUBPLOTID"):
+    # SKLEARN SCALAR FIT
+    all_features_reshaped = tile_features.reshape(-1, tile_features.shape[-1]) # Reshape to (w*h, features)
+
+    # Scale the tile data
+    tile_data_scaled = std_scaler.transform(all_features_reshaped)
+
+    # Make KD tree from FIA. This data has already been scaled by the standard scaler
+    fia_plot_tree = cKDTree(fia_data_scaled)
+
+    valid_mask = ~np.isnan(tile_data_scaled).any(axis=1) # Create mask of valid latent pixels
+    distances = np.full((tile_data_scaled.shape[0], KNN), np.nan, dtype=float) # Create nan distances array 
+    indices = np.full((tile_data_scaled.shape[0], KNN), -1, dtype=int) # Create indices array of all -1
+
+    # Get indices of closest
+    if np.any(valid_mask):
+        distances_valid, indices_valid = fia_plot_tree.query(tile_data_scaled[valid_mask], k=KNN)
+
+        # Add dimension for KNN==1
+        if KNN == 1:
+            distances_valid = distances_valid[:, np.newaxis]
+            indices_valid = indices_valid[:, np.newaxis]
+        
+        # Put valid values back in distance and index arrays
+        distances[valid_mask] = distances_valid
+        indices[valid_mask] = indices_valid
+
+    # Get nearest subp ids by backtracking indices
+    nearest_subp_ids = fia_plot_ids[indices]
+
+    flat_spids = nearest_subp_ids.ravel()
+
+    # Make into DF
+    spid_df = pl.DataFrame({"SUBPLOTID": flat_spids})
+
+    # # Load in Old Growth CSV
+    # OLD_GROWTH = pl.read_csv("./inference/coconino/subplot-ofe-AZ.csv")
+    # # Create SUBPLOTID
+    # OLD_GROWTH = OLD_GROWTH.with_columns(
+    #                             pl.concat_str(
+    #                             [
+    #                                     pl.col("PLT_CN"),
+    #                                     pl.col("SUBP")
+    #                                     ],
+    #                                     separator= "",
+    #                                 ).alias("SUBPLOTID"),
+    #                             )
+    # # unique_subpids_ofe = len(OLD_GROWTH["SUBPLOTID"].unique())
+    # # print(f"Unique: {unique_subpids_ofe} Len: {len(OLD_GROWTH['SUBPLOTID'])} Diff: {len(OLD_GROWTH['SUBPLOTID']) - unique_subpids_ofe}")
+    # # exit()
+    # # Cast to int64 for join
+    # OLD_GROWTH = OLD_GROWTH.with_columns([
+    #     pl.col("SUBPLOTID").cast(pl.Int64)
+    # ])
+    # print("old growth: ", OLD_GROWTH)
+    # OLD_GROWTH_unique = OLD_GROWTH.unique(subset=["SUBPLOTID"]) # Taking out unique, temp fix!!!
+
+    # FORTYPCD
+    fortypcd_df = create_polars_dataframe_by_subplot(STATE, climate_resolution="10m")
+    fortypcd_df = fortypcd_df["SUBPLOTID", "FORTYPCD"]
+
+    # # QMD_TREE
+    # qmd_tree_df = create_polars_dataframe_by_subplot(STATE, climate_resolution="10m")
+    # qmd_tree_df = qmd_tree_df["SUBPLOTID", "QMD_TREE"]
+
+
+    joined = spid_df.join(
+        fortypcd_df.select(["SUBPLOTID", VAR_TO_PLOT]), # This must be DF with plot id col and variable(s) we are mapping
+        on="SUBPLOTID",
+        how="left"
+    )
+
+    var_grid = joined[VAR_TO_PLOT].to_numpy().reshape(nearest_subp_ids.shape) # Isolate var
+
+    # Weighted
+    if KNN > 1 and WEIGHTED and not CATEGORICAL:
+        # Inverse distance weighted average
+        eps = 1e-9
+        weights = 1.0 / (distances + eps)
+
+        not_nan_mask = ~np.isnan(var_grid)
+        weights = np.where(not_nan_mask, weights, 0)
+
+        weighted_sum = np.nansum(var_grid * weights, axis=-1)
+        sum_weights = np.nansum(weights, axis=-1)
+
+        var_avg = np.divide(weighted_sum, sum_weights, out=np.full_like(weighted_sum, np.nan), where=sum_weights>0) # nan if div by 0
+
+        # Weighted std dev
+        diff_sq = (var_grid - var_avg[..., None]) **2 # Squared deviations
+        weighted_var = np.divide(np.nansum(weights * diff_sq, axis=-1), sum_weights, out=np.full_like(sum_weights, np.nan, dtype=np.float32), where=sum_weights > 0) # na if div by 0
+        var_std = np.sqrt(weighted_var)
+
+        # Reshape to (H, W)
+        values = var_avg.reshape(tile_height, tile_width)
+        confidences = var_std.reshape(tile_height, tile_width)
+    
+    elif KNN > 1 and CATEGORICAL:
+        print("doing mode")
+        # REgular mode
+        modes, confidences = mode(var_grid, axis=1, nan_policy='propagate')
+        values = modes.reshape(tile_height, tile_width)
+        confidences = (confidences / KNN).reshape(tile_height, tile_width)
+
+        # Weighted mode
+        # eps = 1e-9
+        # weights = 1.0 / (distances + eps)
+
+        # nan_mask = np.isnan(var_grid).all(axis=1)
+        # var_grid_masked = np.where(np.isnan(var_grid), 0, var_grid)
+        # weights_masked = np.where(np.isnan(var_grid), 0, weights)
+
+        # with parallel_backend('threading'):
+        #     modes, scores = weighted_mode(var_grid_masked, weights_masked, axis=1) # Across axis that is K
+        # confidences = (scores / np.sum(weights_masked, axis=1))
+
+        # modes[nan_mask] = np.nan
+        # confidences[nan_mask] = np.nan
+
+        # values = modes.reshape(tile_height, tile_width)
+        # confidences = confidences.reshape(tile_height, tile_width)
+    # Not weighted average
+    else:
+        values = np.nanmean(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate mean
+        confidences = np.nanstd(var_grid, axis=-1).reshape(tile_height, tile_width) # Calculate std dev
+
+    band_stack = np.stack((values, confidences), axis=-1) # Stack into bands
+
+    band_stack = np.transpose(band_stack, (2, 0, 1)) # Put band dimension first for write out
+
+    standard_scalar_test_path_name = SCALER_OUTPUT_PATH / f"{VAR_TO_PLOT}_SCALER_{file_name}.tif"
+
+    # Write scaler geotif
+    with rasterio.open(
+        standard_scalar_test_path_name,
+        'w',
+        driver='GTiff',
+        height=tile_height,
+        width=tile_width,
+        count=band_stack.shape[0],
+        dtype=np.float32,
+        crs=tile_crs,
+        transform=tile_transform
+    ) as dst:
+        dst.write(band_stack)
 
 # x_vals should be predicted, y_vals should be UNET.
 def make_scatter(x_vals, y_vals, name, file_name):
@@ -116,6 +276,10 @@ def main():
     if not WEIGHT_PATH.exists():
         print(f"Weight path {WEIGHT_PATH} does not exist, exiting.")
         exit()
+    if METHOD:
+        if not SCALER_OUTPUT_PATH.exists():
+            print(f"Scaler path {SCALER_OUTPUT_PATH} does not exist. Exiting.")
+            exit()
 
     print(f"Chunk size: {CHUNK_SIZE}")
 
@@ -147,6 +311,25 @@ def main():
         dropout_rate=dropout_rate,
         attention_module=attention_module_cls
     )
+    
+    # If scaler prepare dataframe
+    if METHOD:
+        print(f"Creating tiles for {VAR_TO_PLOT}")
+        plot_data = create_polars_dataframe_by_subplot(STATE, climate_resolution="10m")
+        fia_plot_ids = plot_data.select("SUBPLOTID").to_numpy().flatten() # Save off plot ids
+        plot_data_features = plot_data[feature_cols] # Select feature cols in correct order
+        # # Print FIA maxes
+        # print(f"Max TPA: {plot_data_features['TREE_COUNT'].max()} "
+        #         f"Max height: {plot_data_features['MAX_HT'].max()} "
+        #         f"Max basal area: {plot_data_features['BASAL_AREA_TREE'].max()}")
+        # exit()
+        # plot_data_features.write_csv("./CSV_OF_PLOT_DATA_FEATURES.csv")
+        # # exit()
+        plot_data_array = plot_data_features.to_numpy() # Make into numpy array
+
+        # Scale both
+        sc = StandardScaler()
+        fia_data_scaled = sc.fit_transform(plot_data_array)
 
     # Loop through all tiles in input directory
     tiles = list(INPUT_PATH.glob("*.tif"))
@@ -261,6 +444,9 @@ def main():
         all_features[:, :, 28] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_18.tif", tile_height, tile_width, tile_transform, tile_crs)
         all_features[:, :, 29] = get_feature_tile(CLIMATIC_PATH / "wc2.1_10m_bio_19.tif", tile_height, tile_width, tile_transform, tile_crs)
 
+        if METHOD:
+            fit_scaler(all_features, plot_data, fia_data_scaled, fia_plot_ids, sc, tile_height, tile_width, tile_crs, tile_transform, file_name)
+            continue
 
         ######################################################
         # # SKLEARN SCALAR FIT
@@ -429,6 +615,7 @@ def main():
         # exit()
         ######################################################
 
+        # Process and turn into latent space
         for y in range(0, tile_height, CHUNK_SIZE):
             for x in range(0, tile_width, CHUNK_SIZE):
                 # If we are on the edge, make starts be CHUNK_SIZE from edge

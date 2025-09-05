@@ -27,7 +27,7 @@ PLOT_ID_COL = 'SUBPLOTID'
 
 KNN = 30 # k nearest neighbors
 
-VAR_TO_MAP = "TREE_COUNT"
+VAR_TO_MAP = "OFE"
 
 CATEGORICAL = False
 
